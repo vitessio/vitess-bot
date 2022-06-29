@@ -1,3 +1,4 @@
+const { backportPullRequest } = require("github-backport");
 const reviewChecklist = `### Review Checklist
             
 Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Request.
@@ -25,6 +26,8 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 - [ ] \`vtctl\` command output order should be stable and \`awk\`-able.
 `
 
+const backportLabelPrefix = "Backport to: "
+
 module.exports = (app) => {
 
   app.on(["pull_request.opened", "pull_request.ready_for_review", "pull_request.reopened"], async (context) => {
@@ -34,8 +37,8 @@ module.exports = (app) => {
       repo: pr.repo,
       issue_number: pr.pull_number,
     });
-    
-    var comment = {owner: pr.owner, repo: pr.repo, body: reviewChecklist};
+
+    var comment = { owner: pr.owner, repo: pr.repo, body: reviewChecklist };
 
     for (let index = 0; index < comments.data.length; index++) {
       const element = comments.data[index];
@@ -44,8 +47,81 @@ module.exports = (app) => {
         return context.octokit.issues.updateComment(comment);
       }
     }
-  
+
     comment.issue_number = pr.pull_number;
     return context.octokit.issues.createComment(comment);
+  });
+
+  app.on(["pull_request.closed"], async (context) => {
+    if (context.payload.merged == false) {
+      return
+    }
+
+    const pr = context.pullRequest();
+    if (pr.owner == "vitessio") {
+      return
+    }
+
+    const pr_details = await context.octokit.rest.pulls.get({
+      owner: pr.owner,
+      repo: pr.repo,
+      pull_number: pr.pull_number,
+    });
+
+    // Get the list of branches on which we need to backport the PR.
+    var branches = [];
+    var labelsForBackportPR = ["Backport"]; // by default we add "Backport" to the list
+    var labels = pr_details.data.labels;
+    await labels.forEach(element => {
+      if (element.name.startsWith(backportLabelPrefix) == true) {
+        let elems = element.name.split(backportLabelPrefix)
+        if (elems.length != 2) {
+          console.error("Could not analyze the label:", element.name)
+        } else {
+          // elems[1] is the second part of the split, which contains the branch name
+          branches.push(elems[1]);
+        }
+      } else {
+        // copy all the other labels so we can assign them to the backport PR
+        labelsForBackportPR.push(element.name);
+      }
+    });
+
+    var failedBranches = [];
+    for (const branch of branches) {
+      var backportedPullRequestNumber = 0;
+      try {
+        backportedPullRequestNumber = await backportPullRequest({
+          base: branch,
+          title: "[" + branch + "] " + pr_details.data.title + " (#" + pr.pull_number + ")",
+          body: `## Description
+This is a backport of #` + pr.pull_number + `.
+`,
+          octokit: context.octokit,
+          owner: pr.owner,
+          pullRequestNumber: pr.pull_number,
+          repo: pr.repo,
+        });
+      } catch (error) {
+        failedBranches.push(branch);
+        continue
+      }
+      await context.octokit.rest.issues.addLabels({
+        owner: pr.owner,
+        repo: pr.repo,
+        issue_number: backportedPullRequestNumber,
+        labels: labelsForBackportPR,
+      });
+    }
+
+    if (failedBranches.length > 0) {
+      await context.octokit.issues.createComment({
+        owner: pr.owner,
+        repo: pr.repo,
+        issue_number: pr.pull_number,
+        body: "I was unable to backport this Pull Request to the following branches: `" + failedBranches.join("`, `") + "`.",
+      });
+    }
+    return
   });
 };
