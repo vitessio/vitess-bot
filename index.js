@@ -58,9 +58,6 @@ module.exports = (app) => {
     }
 
     const pr = context.pullRequest();
-    if (pr.owner == "vitessio") {
-      return
-    }
 
     const pr_details = await context.octokit.rest.pulls.get({
       owner: pr.owner,
