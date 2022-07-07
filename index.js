@@ -6,7 +6,7 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 #### General
 - [ ] Ensure that the Pull Request has a descriptive title.
 - [ ] If this is a change that users need to know about, please apply the \`release notes (needs details)\` label so that merging is blocked unless the summary release notes document is included.
-- [ ] If a new flag is being introduced, review whether it is really needed. The flag names should be clear and intuitive (as far as possible), and the flag's help should be descriptive.
+- [ ] If a new flag is being introduced, review whether it is really needed. The flag names should be clear and intuitive (as far as possible), and the flag's help should be descriptive. Additionally, flag names should use dashes (\`-\`) as word separators rather than underscores (\`_\`).
 - [ ] If a workflow is added or modified, each items in \`Jobs\` should be named in order to mark it as \`required\`. If the workflow should be required, the GitHub Admin should be notified.
 
 #### Bug fixes
