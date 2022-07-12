@@ -27,6 +27,49 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 `
 
 const backportLabelPrefix = "Backport to: "
+const forwardportLabelPrefix = "Forwardport to: "
+
+async function portPR(context, pr, pr_details, branches, labels, type) {
+  var failedBranches = [];
+
+  // Loop over the given branch and port the PR to them.
+  for (const branch of branches) {
+    var portedPullRequestNumber = 0;
+    try {
+      portedPullRequestNumber = await backportPullRequest({
+        base: branch,
+        title: "[" + branch + "] " + pr_details.data.title + " (#" + pr.pull_number + ")",
+        body: `## Description
+This is a ` + type + ` of #` + pr.pull_number + `.
+`,
+        head: type + "-" + pr.pull_number + "-to-" + branch,
+        octokit: context.octokit,
+        owner: pr.owner,
+        pullRequestNumber: pr.pull_number,
+        repo: pr.repo,
+      });
+    } catch (error) {
+      failedBranches.push(branch);
+      continue
+    }
+    await context.octokit.rest.issues.addLabels({
+      owner: pr.owner,
+      repo: pr.repo,
+      issue_number: portedPullRequestNumber,
+      labels: labels,
+    });
+  }
+
+  // If we had a failure, let's comment the PR with the list of branches where the backport/forwardport failed.
+  if (failedBranches.length > 0) {
+    await context.octokit.issues.createComment({
+      owner: pr.owner,
+      repo: pr.repo,
+      issue_number: pr.pull_number,
+      body: "I was unable to " + type + " this Pull Request to the following branches: `" + failedBranches.join("`, `") + "`.",
+    });
+  }
+}
 
 module.exports = (app) => {
 
@@ -71,59 +114,47 @@ module.exports = (app) => {
       pull_number: pr.pull_number,
     });
 
-    // Get the list of branches on which we need to backport the PR.
-    var branches = [];
-    var labelsForBackportPR = ["Backport"]; // by default we add "Backport" to the list
+    // Get the list of branches on which we need to port the PR.
+    var backportBranches = []; // Contains all the branches to backport-to.
+    var forwardportBranches = []; // Contains all the branches to forwardport-to.
+    var labelsForPortPR = []; // The "Backport" and "Forwardport" labels are automatically added to the list depending on the backport type.
     var labels = pr_details.data.labels;
     await labels.forEach(element => {
+      var elems = []
+      var type = { backport: false, forwardport: false }
       if (element.name.startsWith(backportLabelPrefix) == true) {
-        let elems = element.name.split(backportLabelPrefix)
-        if (elems.length != 2) {
-          console.error("Could not analyze the label:", element.name)
-        } else {
-          // elems[1] is the second part of the split, which contains the branch name
-          branches.push(elems[1]);
-        }
+        elems = element.name.split(backportLabelPrefix)
+        type.backport = true // This is a backport.
+      } else if (element.name.startsWith(forwardportLabelPrefix) == true) {
+        elems = element.name.split(forwardportLabelPrefix)
+        type.forwardport = true // This is a forwardport.
+      }
+
+      if (elems.length == 0) {
+        // Copy all the other labels so we can assign them to the ported PR.
+        labelsForPortPR.push(element.name);
+      } else if (elems.length != 2) {
+        console.error("Could not analyze the label:", element.name)
       } else {
-        // copy all the other labels so we can assign them to the backport PR
-        labelsForBackportPR.push(element.name);
+        // elems[1] is the second part of the split, which contains the branch name.
+        if (type.backport == true) {
+          backportBranches.push(elems[1]);
+        } else if (type.forwardport == true) {
+          forwardportBranches.push(elems[1]);
+        }
       }
     });
 
-    var failedBranches = [];
-    for (const branch of branches) {
-      var backportedPullRequestNumber = 0;
-      try {
-        backportedPullRequestNumber = await backportPullRequest({
-          base: branch,
-          title: "[" + branch + "] " + pr_details.data.title + " (#" + pr.pull_number + ")",
-          body: `## Description
-This is a backport of #` + pr.pull_number + `.
-`,
-          octokit: context.octokit,
-          owner: pr.owner,
-          pullRequestNumber: pr.pull_number,
-          repo: pr.repo,
-        });
-      } catch (error) {
-        failedBranches.push(branch);
-        continue
-      }
-      await context.octokit.rest.issues.addLabels({
-        owner: pr.owner,
-        repo: pr.repo,
-        issue_number: backportedPullRequestNumber,
-        labels: labelsForBackportPR,
-      });
+    // Backport if any.
+    if (backportBranches.length > 0) {
+      var labels = ["Backport"]
+      await portPR(context, pr, pr_details, backportBranches, labels.concat(labelsForPortPR), "backport")
     }
 
-    if (failedBranches.length > 0) {
-      await context.octokit.issues.createComment({
-        owner: pr.owner,
-        repo: pr.repo,
-        issue_number: pr.pull_number,
-        body: "I was unable to backport this Pull Request to the following branches: `" + failedBranches.join("`, `") + "`.",
-      });
+    // Forwardport if any.
+    if (forwardportBranches.length > 0) {
+      var labels = ["Forwardport"]
+      await portPR(context, pr, pr_details, forwardportBranches, labels.concat(labelsForPortPR), "forwardport")
     }
     return
   });
