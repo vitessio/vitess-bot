@@ -32,6 +32,12 @@ module.exports = (app) => {
 
   app.on(["pull_request.opened", "pull_request.ready_for_review", "pull_request.reopened"], async (context) => {
     const pr = context.pullRequest();
+
+    // We only comment when the repository if vitessio/vitess
+    if (pr.owner != 'vitessio' && pr.repo != 'vitess') {
+      return
+    }
+
     let comments = await context.octokit.rest.issues.listComments({
       owner: pr.owner,
       repo: pr.repo,
