@@ -1,4 +1,7 @@
 const { backportPullRequest } = require("github-backport");
+const { execSync } = require("child_process");
+const fs = require('fs');
+
 const reviewChecklist = `### Review Checklist
             
 Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Request.
@@ -72,6 +75,111 @@ This is a ` + type + ` of #` + pr.pull_number + `.
 }
 
 module.exports = (app) => {
+
+  app.on(["pull_request.opened", "pull_request.labeled", "pull_request.unlabeled", "pull_request.synchronize"], async (context) => {
+    const pr = context.pullRequest();
+
+
+    if (pr.pull_number != 10738) {
+      return;
+    }
+
+    const per_page = 100;
+    let cont = true;
+    let files = []
+    for (let page = 1; cont; page++) {
+      let currentFiles = await context.octokit.rest.pulls.listFiles({
+        owner: pr.owner,
+        repo: pr.repo,
+        pull_number: pr.pull_number,
+        per_page: per_page,
+        page: page,
+      });
+      if (currentFiles.data.length < per_page) {
+        cont = false;
+      }
+      files = files.concat(currentFiles.data)
+    }
+
+    let found = false;
+    for (let index = 0; index < files.length && found == false; index++) {
+      const file = files[index];
+      if (file.filename == "go/vt/vterrors/code.go") {
+        found = true;
+      }
+    }
+    if (found == false) {
+      return
+    }
+    execSync("git clone https://github.com/vitessio/vitess /tmp/vitess || true");
+    execSync("cd /tmp/vitess && git fetch origin refs/pull/" + pr.pull_number + "/head && git checkout FETCH_HEAD");
+    let output = execSync("cd /tmp/vitess && go run ./go/vt/vterrors/main/");
+    let errStrVitess = output.toString()
+
+    execSync("git clone https://github.com/vitessio/website /tmp/website || true");
+    execSync("cd /tmp/website && git fetch origin refs/pull/1100/head && git checkout FETCH_HEAD");
+    output = execSync("cd /tmp/website && git fetch && cat /tmp/website/content/en/docs/15.0/reference/errors/query-serving.md");
+    let errStrWebsite = output.toString()
+
+    const prefixLabel = "<!-- start -->"
+    const suffixLabel = "<!-- end -->"
+    let startIdx = errStrWebsite.indexOf(prefixLabel)
+    let endIdx = errStrWebsite.indexOf(suffixLabel)
+    let prefix = errStrWebsite.substring(0, startIdx + prefixLabel.length)
+    let suffix = errStrWebsite.substring(endIdx, errStrWebsite.length)
+
+    let str = prefix + '\n' + errStrVitess + suffix
+
+    fs.writeFileSync('/tmp/website/content/en/docs/15.0/reference/errors/query-serving.md', str);
+    output = execSync("cd /tmp/website && git status -s");
+    if (output.toString().length == 0) {
+      return
+    }
+
+    let prodBranch = await context.octokit.rest.repos.getBranch({
+      owner: pr.owner,
+      repo: "website",
+      branch: "prod",
+    });
+    console.log(prodBranch)
+
+    let createRef = await context.octokit.rest.git.createRef({
+      owner: pr.owner,
+      repo: "website",
+      ref: "refs/heads/update-error-code-" + pr.pull_number,
+      sha: prodBranch.data.commit.sha,
+    });
+    console.log(createRef)
+    console.log(prodBranch.data.commit.commit.tree.sha)
+
+    let createTree = await context.octokit.rest.git.createTree({
+      owner: pr.owner,
+      repo: "website",
+      tree: [{
+        path: 'content/en/docs/15.0/reference/errors/query-serving.md',
+        mode: '100644',
+        type: 'blob',
+        content: str,
+        base_tree: prodBranch.data.commit.commit.tree.sha,
+      }],
+    });
+    console.log(createTree)
+
+    let createCommit = await context.octokit.rest.git.createCommit({
+      owner: pr.owner,
+      repo: "website",
+      message: "Updated the query-serving error code",
+      tree: createTree.data.sha,
+      author: {
+        name: 'vitess-bot[bot]',
+        email: '108069721+vitess-bot[bot]@users.noreply.github.com',
+      },
+      parents: [
+        prodBranch.data.commit.sha
+      ],
+    })
+    console.log(createCommit)
+  });
 
   app.on(["pull_request.opened", "pull_request.ready_for_review", "pull_request.reopened"], async (context) => {
     const pr = context.pullRequest();
