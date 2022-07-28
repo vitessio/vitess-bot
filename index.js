@@ -198,6 +198,7 @@ module.exports = (app) => {
       repo: "website",
       ref: "heads/" + branchName,
       sha: createCommit.data.sha,
+      force: true,
     });
 
     if (newBranch) {
