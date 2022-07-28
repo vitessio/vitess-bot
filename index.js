@@ -1,4 +1,8 @@
 const { backportPullRequest } = require("github-backport");
+const { execSync } = require("child_process");
+const fs = require('fs');
+const { REPL_MODE_STRICT } = require("repl");
+
 const reviewChecklist = `### Review Checklist
             
 Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Request.
@@ -72,6 +76,144 @@ This is a ` + type + ` of #` + pr.pull_number + `.
 }
 
 module.exports = (app) => {
+
+  app.on(["pull_request.opened", "pull_request.synchronize"], async (context) => {
+    const pr = context.pullRequest();
+
+    if (pr.owner != 'vitessio' || pr.repo != 'vitess') {
+      return
+    }
+
+    const per_page = 100;
+    let cont = true;
+    let files = []
+    for (let page = 1; cont; page++) {
+      let currentFiles = await context.octokit.rest.pulls.listFiles({
+        owner: pr.owner,
+        repo: pr.repo,
+        pull_number: pr.pull_number,
+        per_page: per_page,
+        page: page,
+      });
+      if (currentFiles.data.length < per_page) {
+        cont = false;
+      }
+      files = files.concat(currentFiles.data)
+    }
+
+    let found = false;
+    for (let index = 0; index < files.length && found == false; index++) {
+      const file = files[index];
+      if (file.filename == "go/vt/vterrors/code.go") {
+        found = true;
+      }
+    }
+    if (found == false) {
+      return
+    }
+    execSync("git clone https://github.com/vitessio/vitess /tmp/vitess || true");
+    execSync("cd /tmp/vitess && git fetch origin refs/pull/" + pr.pull_number + "/head && git checkout FETCH_HEAD");
+    let output = execSync("cd /tmp/vitess && go run ./go/vt/vterrors/main/");
+    let errStrVitess = output.toString()
+
+    const docPath = "/tmp/website/content/en/docs/15.0/reference/errors/query-serving.md"
+    execSync("git clone https://github.com/vitessio/website /tmp/website || true");
+    execSync("cd /tmp/website");
+    output = execSync("cd /tmp/website && git fetch && cat " + docPath);
+    let errStrWebsite = output.toString()
+
+    const prefixLabel = "<!-- start -->"
+    const suffixLabel = "<!-- end -->"
+    let startIdx = errStrWebsite.indexOf(prefixLabel)
+    let endIdx = errStrWebsite.indexOf(suffixLabel)
+    let prefix = errStrWebsite.substring(0, startIdx + prefixLabel.length)
+    let suffix = errStrWebsite.substring(endIdx, errStrWebsite.length)
+
+    let str = prefix + '\n' + errStrVitess + suffix
+
+    fs.writeFileSync(docPath, str);
+    output = execSync("cd /tmp/website && git status -s");
+    if (output.toString().length == 0) {
+      return
+    }
+
+    let prodBranch = await context.octokit.rest.repos.getBranch({
+      owner: pr.owner,
+      repo: "website",
+      branch: "prod",
+    });
+
+    const branchName = "update-error-code-" + pr.pull_number
+    let baseTree = ""
+    let parent = ""
+    let newBranch = false
+    try {
+      let docBranch = await context.octokit.rest.repos.getBranch({
+        owner: pr.owner,
+        repo: "website",
+        branch: branchName,
+      });
+      baseTree = docBranch.data.commit.commit.tree.sha
+      parent = docBranch.data.commit.sha
+    } catch (error) {
+      newBranch = true
+      baseTree = prodBranch.data.commit.commit.tree.sha
+      parent = prodBranch.data.commit.sha
+      await context.octokit.rest.git.createRef({
+        owner: pr.owner,
+        repo: "website",
+        ref: "refs/heads/" + branchName,
+        sha: parent,
+      });
+    }
+
+    let createTree = await context.octokit.rest.git.createTree({
+      owner: pr.owner,
+      repo: "website",
+      tree: [{
+        path: 'content/en/docs/15.0/reference/errors/query-serving.md',
+        mode: '100644',
+        type: 'blob',
+        content: str,
+      }],
+      base_tree: baseTree,
+    });
+
+    let createCommit = await context.octokit.rest.git.createCommit({
+      owner: pr.owner,
+      repo: "website",
+      message: "Updated the query-serving error code",
+      tree: createTree.data.sha,
+      author: {
+        name: 'vitess-bot[bot]',
+        email: '108069721+vitess-bot[bot]@users.noreply.github.com',
+      },
+      parents: [
+        parent
+      ],
+    })
+
+    await context.octokit.rest.git.updateRef({
+      owner: pr.owner,
+      repo: "website",
+      ref: "heads/" + branchName,
+      sha: createCommit.data.sha,
+      force: true,
+    });
+
+    if (newBranch) {
+      await context.octokit.rest.pulls.create({
+        owner: pr.owner,
+        repo: "website",
+        title: "Update error code documentation (#" + pr.pull_number + ")",
+        body: `## Description
+This Pull Request updates the error code documentation based on the changes made in https://github.com/vitessio/vitess/pull/`+ pr.pull_number + `.
+`,
+        head: branchName,
+        base: "prod",
+      });
+    }
+  });
 
   app.on(["pull_request.opened", "pull_request.ready_for_review", "pull_request.reopened"], async (context) => {
     const pr = context.pullRequest();
