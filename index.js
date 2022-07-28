@@ -1,6 +1,7 @@
 const { backportPullRequest } = require("github-backport");
 const { execSync } = require("child_process");
 const fs = require('fs');
+const { REPL_MODE_STRICT } = require("repl");
 
 const reviewChecklist = `### Review Checklist
             
@@ -76,12 +77,11 @@ This is a ` + type + ` of #` + pr.pull_number + `.
 
 module.exports = (app) => {
 
-  app.on(["pull_request.opened", "pull_request.labeled", "pull_request.unlabeled", "pull_request.synchronize"], async (context) => {
+  app.on(["pull_request.opened", "pull_request.synchronize"], async (context) => {
     const pr = context.pullRequest();
 
-
-    if (pr.pull_number != 10738) {
-      return;
+    if (pr.owner != 'vitessio' || pr.repo != 'vitess') {
+      return
     }
 
     const per_page = 100;
@@ -117,7 +117,7 @@ module.exports = (app) => {
     let errStrVitess = output.toString()
 
     execSync("git clone https://github.com/vitessio/website /tmp/website || true");
-    execSync("cd /tmp/website && git fetch origin refs/pull/1100/head && git checkout FETCH_HEAD");
+    execSync("cd /tmp/website");
     output = execSync("cd /tmp/website && git fetch && cat /tmp/website/content/en/docs/15.0/reference/errors/query-serving.md");
     let errStrWebsite = output.toString()
 
@@ -141,16 +141,30 @@ module.exports = (app) => {
       repo: "website",
       branch: "prod",
     });
-    console.log(prodBranch)
 
-    let createRef = await context.octokit.rest.git.createRef({
-      owner: pr.owner,
-      repo: "website",
-      ref: "refs/heads/update-error-code-" + pr.pull_number,
-      sha: prodBranch.data.commit.sha,
-    });
-    console.log(createRef)
-    console.log(prodBranch.data.commit.commit.tree.sha)
+    const branchName = "update-error-code-" + pr.pull_number
+    let baseTree = ""
+    let parent = ""
+    let newBranch = false
+    try {
+      let docBranch = await context.octokit.rest.repos.getBranch({
+        owner: pr.owner,
+        repo: "website",
+        branch: branchName,
+      });
+      baseTree = docBranch.data.commit.commit.tree.sha
+      parent = docBranch.data.commit.sha
+    } catch (error) {
+      newBranch = true
+      baseTree = prodBranch.data.commit.commit.tree.sha
+      parent = prodBranch.data.commit.sha
+      await context.octokit.rest.git.createRef({
+        owner: pr.owner,
+        repo: "website",
+        ref: "refs/heads/" + branchName,
+        sha: parent,
+      });
+    }
 
     let createTree = await context.octokit.rest.git.createTree({
       owner: pr.owner,
@@ -160,10 +174,9 @@ module.exports = (app) => {
         mode: '100644',
         type: 'blob',
         content: str,
-        base_tree: prodBranch.data.commit.commit.tree.sha,
       }],
+      base_tree: baseTree,
     });
-    console.log(createTree)
 
     let createCommit = await context.octokit.rest.git.createCommit({
       owner: pr.owner,
@@ -175,10 +188,29 @@ module.exports = (app) => {
         email: '108069721+vitess-bot[bot]@users.noreply.github.com',
       },
       parents: [
-        prodBranch.data.commit.sha
+        parent
       ],
     })
-    console.log(createCommit)
+
+    await context.octokit.rest.git.updateRef({
+      owner: pr.owner,
+      repo: "website",
+      ref: "heads/" + branchName,
+      sha: createCommit.data.sha,
+    });
+
+    if (newBranch) {
+      await context.octokit.rest.pulls.create({
+        owner: pr.owner,
+        repo: "website",
+        title: "Update error code documentation (#" + pr.pull_number + ")",
+        body: `## Description
+This Pull Request updates the error code documentation based on the changes made in https://github.com/vitessio/vitess/pull/`+ pr.pull_number + `.
+`,
+        head: branchName,
+        base: "prod",
+      });
+    }
   });
 
   app.on(["pull_request.opened", "pull_request.ready_for_review", "pull_request.reopened"], async (context) => {
