@@ -116,9 +116,10 @@ module.exports = (app) => {
     let output = execSync("cd /tmp/vitess && go run ./go/vt/vterrors/main/");
     let errStrVitess = output.toString()
 
+    const docPath = "/tmp/website/content/en/docs/15.0/reference/errors/query-serving.md"
     execSync("git clone https://github.com/vitessio/website /tmp/website || true");
     execSync("cd /tmp/website");
-    output = execSync("cd /tmp/website && git fetch && cat /tmp/website/content/en/docs/15.0/reference/errors/query-serving.md");
+    output = execSync("cd /tmp/website && git fetch && cat " + docPath);
     let errStrWebsite = output.toString()
 
     const prefixLabel = "<!-- start -->"
@@ -130,7 +131,7 @@ module.exports = (app) => {
 
     let str = prefix + '\n' + errStrVitess + suffix
 
-    fs.writeFileSync('/tmp/website/content/en/docs/15.0/reference/errors/query-serving.md', str);
+    fs.writeFileSync(docPath, str);
     output = execSync("cd /tmp/website && git status -s");
     if (output.toString().length == 0) {
       return
