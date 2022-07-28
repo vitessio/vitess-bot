@@ -217,7 +217,7 @@ This Pull Request updates the error code documentation based on the changes made
     const pr = context.pullRequest();
 
     // We only comment when the repository if vitessio/vitess
-    if (pr.owner != 'vitessio' && pr.repo != 'vitess') {
+    if (pr.owner !== "vitessio" || pr.repo !== "vitess") {
       return
     }
 
@@ -231,7 +231,7 @@ This Pull Request updates the error code documentation based on the changes made
 
     for (let index = 0; index < comments.data.length; index++) {
       const element = comments.data[index];
-      if (element.user.login == "vitess-bot[bot]" && element.body.includes("### Review Checklist")) {
+      if (element.user.login === "vitess-bot[bot]" && element.body.includes("### Review Checklist")) {
         comment.comment_id = element.id;
         return context.octokit.issues.updateComment(comment);
       }
