@@ -1,6 +1,6 @@
 # vitess-bot
 
-This bot that automates redundant tasks in the [`vitessio/vitess`](https://github.com/vitessio/vitess) git repo.
+This bot automates redundant tasks in the [`vitessio/vitess`](https://github.com/vitessio/vitess) git repo.
 
 It currently currently automates the following tasks:
 
