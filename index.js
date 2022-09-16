@@ -10,12 +10,20 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 #### General
 - [ ] Ensure that the Pull Request has a descriptive title.
 - [ ] If this is a change that users need to know about, please apply the \`release notes (needs details)\` label so that merging is blocked unless the summary release notes document is included.
-- [ ] If a new flag is being introduced, review whether it is really needed. The flag names should be clear and intuitive (as far as possible), and the flag's help should be descriptive. Additionally, flag names should use dashes (\`-\`) as word separators rather than underscores (\`_\`).
-- [ ] If a workflow is added or modified, each items in \`Jobs\` should be named in order to mark it as \`required\`. If the workflow should be required, the GitHub Admin should be notified.
+
+#### If a new flag is being introduced:
+- [ ] Is it really necessary to add this flag?
+- [ ] Flag names should be clear and intuitive (as far as possible)
+- [ ] Help text should be descriptive.
+- [ ] Flag names should use dashes (\`-\`) as word separators rather than underscores (\`_\`).
+
+#### If a workflow is added or modified:
+- [ ] Each item in \`Jobs\` should be named in order to mark it as \`required\`.
+- [ ] If the workflow should be required, the maintainer team should be notified.
 
 #### Bug fixes
 - [ ] There should be at least one unit or end-to-end test.
-- [ ] The Pull Request description should either include a link to an issue that describes the bug OR an actual description of the bug and how to reproduce, along with a description of the fix.
+- [ ] The Pull Request description should include a link to an issue that describes the bug.
 
 #### Non-trivial changes
 - [ ] There should be some code comments as to why things are implemented the way they are.
@@ -28,6 +36,7 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 - [ ] Protobuf changes should be wire-compatible.
 - [ ] Changes to \`_vt\` tables and RPCs need to be backward compatible.
 - [ ] \`vtctl\` command output order should be stable and \`awk\`-able.
+- [ ] RPC changes should be compatible with vitess-operator
 `
 
 const backportLabelPrefix = "Backport to: "

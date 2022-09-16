@@ -104,3 +104,30 @@ dist
 .tern-port
 
 .data
+
+# For mac users
+.DS_Store
+
+# For direnv users
+.envrc
+
+# vim files
+*.swp
+tags
+
+# emacs
+*~
+
+# Eclipse files
+.classpath
+.project
+.pydevproject
+.settings/
+
+# intellij files
+*.iml
+.idea
+
+# vscode
+.vscode/
+__debug_bin
