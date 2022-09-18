@@ -37,6 +37,7 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 - [ ] Changes to \`_vt\` tables and RPCs need to be backward compatible.
 - [ ] \`vtctl\` command output order should be stable and \`awk\`-able.
 - [ ] RPC changes should be compatible with vitess-operator
+- [ ] If a flag is removed, then it should also be removed from VTop, if used there.
 `
 
 const backportLabelPrefix = "Backport to: "
