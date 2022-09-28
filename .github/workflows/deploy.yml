@@ -1,0 +1,35 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    if: ${{ github.repository_owner == 'vitessio' }}
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.19
+
+      - name: executing remote ssh commands using password
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.KEY }}
+          port: ${{ secrets.PORT }}
+          script: |
+            cd $HOME/vitess-bot
+            git reset --hard FETCH_HEAD
+            git clean -fd
+            git fetch origin main
+            git checkout FETCH_HEAD
+            docker build -t vitess-bot .
+            docker container stop vitess-bot || true
+            docker container rm vitess-bot || true
+            docker run -d --name vitess-bot -p 3000:3000 vitess-bot
