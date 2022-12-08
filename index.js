@@ -254,7 +254,7 @@ This Pull Request updates the error code documentation based on the changes made
   });
 
   app.on(["pull_request.closed"], async (context) => {
-    if (context.payload.merged !== true) {
+    if (context.payload.pull_request.merged_at == null) {
       return
     }
 
