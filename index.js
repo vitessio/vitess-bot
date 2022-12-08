@@ -127,7 +127,7 @@ module.exports = (app) => {
     }
     execSync("git clone https://github.com/vitessio/vitess /tmp/vitess || true");
     execSync("cd /tmp/vitess && git fetch origin refs/pull/" + pr.pull_number + "/head && git checkout FETCH_HEAD");
-    let output = execSync("cd /tmp/vitess && go run ./go/vt/vterrors/main/");
+    let output = execSync("cd /tmp/vitess && go run .go/vt/vterrors/vterrorsgen/");
     let errStrVitess = output.toString()
 
     const docPath = "/tmp/website/content/en/docs/15.0/reference/errors/query-serving.md"
