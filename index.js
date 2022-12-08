@@ -63,7 +63,11 @@ This is a ` + type + ` of #` + pr.pull_number + `.
         repo: pr.repo,
       });
     } catch (error) {
+      console.log("failed to backport:", pr.pull_number, "to branch:", branch, "error:", error)
       failedBranches.push(branch);
+      continue
+    }
+    if (portedPullRequestNumber == 0) {
       continue
     }
     await context.octokit.rest.issues.addLabels({
@@ -286,7 +290,7 @@ This Pull Request updates the error code documentation based on the changes made
         // Copy all the other labels so we can assign them to the ported PR.
         labelsForPortPR.push(element.name);
       } else if (elems.length != 2) {
-        console.error("Could not analyze the label:", element.name)
+        console.log("could not analyze the label:", element.name, "for pull request:", pr.pull_number)
       } else {
         // elems[1] is the second part of the split, which contains the branch name.
         if (type.backport == true) {
