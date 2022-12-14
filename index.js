@@ -130,10 +130,22 @@ module.exports = (app) => {
     let output = execSync("cd /tmp/vitess && go run ./go/vt/vterrors/vterrorsgen");
     let errStrVitess = output.toString()
 
-    const docPath = "/tmp/website/content/en/docs/15.0/reference/errors/query-serving.md"
+    const pr_details = await context.octokit.rest.pulls.get({
+      owner: pr.owner,
+      repo: pr.repo,
+      pull_number: pr.pull_number,
+    });
+
     execSync("git clone https://github.com/vitessio/website /tmp/website || true");
-    execSync("cd /tmp/website");
-    output = execSync("cd /tmp/website && git fetch && cat " + docPath);
+    output = execSync(`cd /tmp/website && cat config.toml | grep next | cut -d '"' -f 2`);
+
+    let currVersion = output.toString();
+    if (pr_details.data.base.ref.startsWith("release-") && pr_details.data.base.ref.length == "release-00.0".length) {
+      currVersion = pr_details.data.base.ref.slice("release-".length)
+    }
+    const docPath = "/tmp/website/content/en/docs/" + currVersion + "/reference/errors/query-serving.md"
+
+    output = execSync("cd /tmp/website && cat " + docPath);
     let errStrWebsite = output.toString()
 
     const prefixLabel = "<!-- start -->"
