@@ -136,15 +136,16 @@ module.exports = (app) => {
       pull_number: pr.pull_number,
     });
 
-    let currVersion = "16.0";
+    execSync("git clone https://github.com/vitessio/website /tmp/website || true");
+    output = execSync(`cd /tmp/website && cat config.toml | grep next | cut -d '"' -f 2`);
+
+    let currVersion = output.toString();
     if (pr_details.data.base.ref.startsWith("release-") && pr_details.data.base.ref.length == "release-00.0".length) {
       currVersion = pr_details.data.base.ref.slice("release-".length)
     }
-
     const docPath = "/tmp/website/content/en/docs/" + currVersion + "/reference/errors/query-serving.md"
-    execSync("git clone https://github.com/vitessio/website /tmp/website || true");
-    execSync("cd /tmp/website");
-    output = execSync("cd /tmp/website && git fetch && cat " + docPath);
+
+    output = execSync("cd /tmp/website && cat " + docPath);
     let errStrWebsite = output.toString()
 
     const prefixLabel = "<!-- start -->"
