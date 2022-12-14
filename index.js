@@ -10,6 +10,7 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 #### General
 - [ ] Ensure that the Pull Request has a descriptive title.
 - [ ] If this is a change that users need to know about, please apply the \`release notes (needs details)\` label so that merging is blocked unless the summary release notes document is included.
+- [ ] If a test is added or modified, there should be a documentation on top of the test to explain what the expected behavior is what the test does.
 
 #### If a new flag is being introduced:
 - [ ] Is it really necessary to add this flag?
