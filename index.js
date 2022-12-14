@@ -137,7 +137,8 @@ module.exports = (app) => {
     });
 
     execSync("git clone https://github.com/vitessio/website /tmp/website || true");
-    output = execSync(`cd /tmp/website && cat config.toml | grep next | cut -d '"' -f 2`);
+    execSync(`cd /tmp/website && git pull || true`);
+    output = execSync(`cd /tmp/website && cat config.toml | grep next | cut -d '"' -f 2 | tr -d '\n'`);
 
     let currVersion = output.toString();
     if (pr_details.data.base.ref.startsWith("release-") && pr_details.data.base.ref.length == "release-00.0".length) {
@@ -197,7 +198,7 @@ module.exports = (app) => {
       owner: pr.owner,
       repo: "website",
       tree: [{
-        path: 'content/en/docs/15.0/reference/errors/query-serving.md',
+        path: 'content/en/docs/' + currVersion + '/reference/errors/query-serving.md',
         mode: '100644',
         type: 'blob',
         content: str,
