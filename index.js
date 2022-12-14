@@ -137,7 +137,7 @@ module.exports = (app) => {
     });
 
     execSync("git clone https://github.com/vitessio/website /tmp/website || true");
-    output = execSync(`cd /tmp/website && cat config.toml | grep next | cut -d '"' -f 2`);
+    output = execSync(`cd /tmp/website && cat config.toml | grep next | cut -d '"' -f 2 | tr -d '\n'`);
 
     let currVersion = output.toString();
     if (pr_details.data.base.ref.startsWith("release-") && pr_details.data.base.ref.length == "release-00.0".length) {
