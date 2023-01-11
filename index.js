@@ -92,6 +92,21 @@ This is a ` + type + ` of #` + pr.pull_number + `.
 
 module.exports = (app) => {
 
+  app.on(["pull_request.opened"], async (context) => {
+    const pr = context.pullRequest();
+
+    if (pr.owner != 'vitessio' || pr.repo != 'vitess') {
+      return
+    }
+
+    await context.octokit.rest.issues.addLabels({
+      owner: pr.owner,
+      repo: pr.repo,
+      issue_number: pr.pull_number,
+      labels: ["NeedsWebsiteDocsUpdate", "NeedsDescriptionUpdate"],
+    });
+  })
+
   app.on(["pull_request.opened", "pull_request.synchronize"], async (context) => {
     const pr = context.pullRequest();
 
