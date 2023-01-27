@@ -21,5 +21,17 @@ You can install and configure the bot with the following commands:
 You can run the bot with the following command:
 `docker run -d --name vitess-bot -p 3000:3000 vitess-bot`
 
+## Restarting the bot
+You may want to do this if, for instance, the bot is running but the events are not getting executed by the bot. You'll first want to stop and remove the old container:
+```
+docker container stop <name of the vitess bot container>
+docker container rm <name of the vitess bot container>
+```
+
+And then, start the container again:
+```
+docker run -d --name vitess-bot -p 3000:3000 vitess-bot
+```
+
 ## Notes
 :warning: When using [GitHub self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners), the bot should only be running on one of the runners at any given time.
