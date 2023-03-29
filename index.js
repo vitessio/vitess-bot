@@ -92,19 +92,45 @@ This is a ` + type + ` of #` + pr.pull_number + `.
 
 module.exports = (app) => {
 
-  app.on(["pull_request.opened"], async (context) => {
+  app.on(["pull_request.opened", "pull_request.labeled"], async (context) => {
     const pr = context.pullRequest();
 
     if (pr.owner != 'vitessio' || pr.repo != 'vitess') {
       return
     }
 
+    // Add labels
     await context.octokit.rest.issues.addLabels({
       owner: pr.owner,
       repo: pr.repo,
       issue_number: pr.pull_number,
       labels: ["NeedsWebsiteDocsUpdate", "NeedsDescriptionUpdate"],
     });
+
+    // Add milestone, we need to fetch the Pull Request code in order to get the current Vitess version
+    execSync("git clone https://github.com/vitessio/vitess /tmp/vitess || true");
+    execSync("cd /tmp/vitess && git fetch origin refs/pull/" + pr.pull_number + "/head && git checkout FETCH_HEAD");
+    let output = execSync("cd /tmp/vitess && go run ./go/tools/version/version.go");
+    let versionVitess = output.toString().replace(/[\r\n]/g, "");
+
+    var milestones = await context.octokit.rest.issues.listMilestones({
+      owner: pr.owner,
+      repo: pr.repo,
+    });
+
+    var milestoneID = 0
+    for (let index = 0; index < milestones.data.length; index++) {
+      if (milestones.data[index].title == "v" + versionVitess) {
+        milestoneID = milestones.data[index].number
+        break
+      }
+    }
+    if (milestoneID == 0) {
+      console.log("Failed to find milestone for: v" + versionVitess)
+      return
+    }
+    var newMilestone = { owner: pr.owner, repo: pr.repo, issue_number: pr.pull_number, milestone: milestoneID };
+    await context.octokit.rest.issues.update(newMilestone)
   })
 
   app.on(["pull_request.opened", "pull_request.synchronize"], async (context) => {
