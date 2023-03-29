@@ -21,6 +21,15 @@ You can install and configure the bot with the following commands:
 You can run the bot with the following command:
 `docker run -d --name vitess-bot -p 3000:3000 vitess-bot`
 
+## Running smee.io
+You must have a running instance of smee.io. It can be self-hosted or hosted on smee.io directly.
+You need to use the proper URL in your `.env` file to fetch data from the smee.io server.
+
+If you want to run smee.io locally, use the following command:
+`docker run -d -p 3001:3000 ghcr.io/probot/smee.io`
+
+The URL of your smee.io server will be `http://localhost:3001/channel`
+
 ## Restarting the bot
 You may want to do this if, for instance, the bot is running but the events are not getting executed by the bot. You'll first want to stop and remove the old container:
 ```
