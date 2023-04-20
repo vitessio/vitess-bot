@@ -92,7 +92,7 @@ This is a ` + type + ` of #` + pr.pull_number + `.
 
 module.exports = (app) => {
 
-  app.on(["pull_request.opened"x], async (context) => {
+  app.on(["pull_request.opened"], async (context) => {
     const pr = context.pullRequest();
 
     if (pr.owner != 'vitessio' || pr.repo != 'vitess') {
