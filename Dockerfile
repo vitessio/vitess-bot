@@ -2,7 +2,7 @@ FROM node:19.0-buster
 
 WORKDIR /usr/src/app
 
-RUN wget https://dl.google.com/go/go1.19.linux-amd64.tar.gz && tar -xvf go1.19.linux-amd64.tar.gz && mv go /usr/local
+RUN wget https://dl.google.com/go/go1.20.linux-amd64.tar.gz && tar -xvf go1.20.linux-amd64.tar.gz && mv go /usr/local
 
 ENV GOROOT=/usr/local/go
 ENV GOPATH=$HOME/go
