@@ -104,7 +104,7 @@ module.exports = (app) => {
       owner: pr.owner,
       repo: pr.repo,
       issue_number: pr.pull_number,
-      labels: ["NeedsWebsiteDocsUpdate", "NeedsDescriptionUpdate"],
+      labels: ["NeedsWebsiteDocsUpdate", "NeedsDescriptionUpdate", "NeedsIssue"],
     });
   })
 
