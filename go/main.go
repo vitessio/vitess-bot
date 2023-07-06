@@ -52,7 +52,8 @@ func main() {
 	}
 
 	prCommentHandler := &PRCommentHandler{
-		ClientCreator: cc,
+		ClientCreator:   cc,
+		reviewChecklist: cfg.reviewChecklist,
 	}
 
 	webhookHandler := githubapp.NewDefaultEventDispatcher(cfg.Github, prCommentHandler)

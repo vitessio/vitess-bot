@@ -25,8 +25,11 @@ import (
 )
 
 type config struct {
-	Github githubapp.Config `yaml:"github"`
+	Github githubapp.Config
+
+	reviewChecklist string
 }
+
 
 func readConfig() (*config, error) {
 	err := godotenv.Load()
@@ -35,17 +38,28 @@ func readConfig() (*config, error) {
 	}
 
 	var c config
-
 	c.Github.SetValuesFromEnv("")
 
+	// Read SSH private key from environment and filesystem
 	pathPrivateKey := os.Getenv("PRIVATE_KEY_PATH")
 	if pathPrivateKey == "" {
 		return nil, errors.New("no private key path found, please set the PRIVATE_KEY_PATH environment variable")
 	}
 	bytes, err := os.ReadFile(pathPrivateKey)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed private key file: %s", pathPrivateKey)
+		return nil, errors.Wrapf(err, "failed to read private key file: %s", pathPrivateKey)
 	}
 	c.Github.App.PrivateKey = string(bytes)
+
+	// Read the review checklist from environment and filesystem
+	pathReviewChecklist := os.Getenv("REVIEW_CHECKLIST_PATH")
+	if pathReviewChecklist == "" {
+		return nil, errors.New("no private key path found, please set the REVIEW_CHECKLIST_PATH environment variable")
+	}
+	bytes, err = os.ReadFile(pathReviewChecklist)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read review checklist file: %s", pathReviewChecklist)
+	}
+	c.reviewChecklist = string(bytes)
 	return &c, nil
 }
