@@ -25,10 +25,35 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	alwaysAddLabels = []string{
+		"NeedsWebsiteDocsUpdate",
+		"NeedsDescriptionUpdate",
+		"NeedsIssue",
+	}
+)
+
 type PRCommentHandler struct {
 	githubapp.ClientCreator
 
 	reviewChecklist string
+}
+
+type prInformation struct {
+	repo      *github.Repository
+	num       int
+	repoOwner string
+	repoName  string
+}
+
+func getPRInformation(event github.PullRequestEvent) prInformation {
+	repo := event.GetRepo()
+	return prInformation{
+		repo:      repo,
+		num:       event.GetNumber(),
+		repoOwner: repo.GetOwner().GetLogin(),
+		repoName:  repo.GetName(),
+	}
 }
 
 func (h *PRCommentHandler) Handles() []string {
@@ -41,20 +66,22 @@ func (h *PRCommentHandler) Handle(ctx context.Context, eventType, deliveryID str
 		return errors.Wrap(err, "failed to parse issue comment event payload")
 	}
 
-	var err error
 	switch event.GetAction() {
 	case "opened":
-		err = h.addReviewChecklist(ctx, event)
+		prInfo := getPRInformation(event)
+		err := h.addReviewChecklist(ctx, event, prInfo)
+		if err != nil {
+			return err
+		}
+		err = h.addLabels(ctx, event, prInfo)
+		if err != nil {
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
-func (h *PRCommentHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent) error {
-	repo := event.GetRepo()
-	prNum := event.GetNumber()
-	repoOwner := repo.GetOwner().GetLogin()
-	repoName := repo.GetName()
-
+func (h *PRCommentHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -62,15 +89,32 @@ func (h *PRCommentHandler) addReviewChecklist(ctx context.Context, event github.
 		return err
 	}
 
-	ctx, logger := githubapp.PreparePRContext(ctx, installationID, repo, event.GetNumber())
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
 
 	prComment := github.IssueComment{
 		Body: &h.reviewChecklist,
 	}
 
-	logger.Debug().Msgf("Adding review checklist on %s/%s#%d", repoOwner, repoName, prNum)
-	if _, _, err := client.Issues.CreateComment(ctx, repoOwner, repoName, prNum, &prComment); err != nil {
-		logger.Error().Err(err).Msg("Failed to comment on pull request")
+	logger.Debug().Msgf("Adding review checklist to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	if _, _, err := client.Issues.CreateComment(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num, &prComment); err != nil {
+		logger.Error().Err(err).Msgf("Failed to comment the review checklist to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	}
+	return nil
+}
+
+func (h *PRCommentHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+	installationID := githubapp.GetInstallationIDFromEvent(&event)
+
+	client, err := h.NewInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+
+	logger.Debug().Msgf("Adding initial labels to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	if _, _, err := client.Issues.AddLabelsToIssue(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num, alwaysAddLabels); err != nil {
+		logger.Error().Err(err).Msgf("Failed to add initial labels to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 	return nil
 }
