@@ -33,7 +33,7 @@ var (
 	}
 )
 
-type PRCommentHandler struct {
+type PullRequestHandler struct {
 	githubapp.ClientCreator
 
 	reviewChecklist string
@@ -56,11 +56,11 @@ func getPRInformation(event github.PullRequestEvent) prInformation {
 	}
 }
 
-func (h *PRCommentHandler) Handles() []string {
+func (h *PullRequestHandler) Handles() []string {
 	return []string{"pull_request"}
 }
 
-func (h *PRCommentHandler) Handle(ctx context.Context, eventType, deliveryID string, payload []byte) error {
+func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID string, payload []byte) error {
 	var event github.PullRequestEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return errors.Wrap(err, "failed to parse issue comment event payload")
@@ -77,11 +77,21 @@ func (h *PRCommentHandler) Handle(ctx context.Context, eventType, deliveryID str
 		if err != nil {
 			return err
 		}
+		err = h.createErrorDocumentation(ctx, event, prInfo)
+		if err != nil {
+			return err
+		}
+	case "synchronize":
+		prInfo := getPRInformation(event)
+		err := h.createErrorDocumentation(ctx, event, prInfo)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (h *PRCommentHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -102,7 +112,7 @@ func (h *PRCommentHandler) addReviewChecklist(ctx context.Context, event github.
 	return nil
 }
 
-func (h *PRCommentHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -115,6 +125,62 @@ func (h *PRCommentHandler) addLabels(ctx context.Context, event github.PullReque
 	logger.Debug().Msgf("Adding initial labels to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	if _, _, err := client.Issues.AddLabelsToIssue(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num, alwaysAddLabels); err != nil {
 		logger.Error().Err(err).Msgf("Failed to add initial labels to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	}
+	return nil
+}
+
+func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+	installationID := githubapp.GetInstallationIDFromEvent(&event)
+
+	client, err := h.NewInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+
+	if prInfo.repoName != "vitess" {
+		logger.Debug().Msgf("Pull Request %s/%s#%d is not on a vitess repo, skipping error generation", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+		return nil
+	}
+
+	logger.Debug().Msgf("Listing changed files in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	changeDetected, err := detectErrorCodeChanges(ctx, prInfo, client)
+	if err != nil {
+		logger.Err(err)
+		return nil
+	}
+	if !changeDetected {
+		logger.Debug().Msgf("No change detect to 'go/vt/vterrors/code.go' in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+		return nil
+	}
+	logger.Debug().Msgf("Change detect to 'go/vt/vterrors/code.go' in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+
+	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(prInfo)
+	if err != nil {
+		logger.Err(err)
+		return nil
+	}
+
+	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(prInfo)
+	if err != nil {
+		logger.Err(err)
+		return nil
+	}
+
+	errorDocContent, docPath, err := generateErrorCodeDocumentation(ctx, client, prInfo, currentVersionDocs, vterrorsgenVitess)
+	if err != nil {
+		logger.Err(err)
+		return nil
+	}
+	if errorDocContent == "" {
+		logger.Debug().Msgf("No change detected in error code in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+		return nil
+	}
+
+	err = createCommitAndPullRequestForErrorCode(ctx, prInfo, client, logger, errorDocContent, docPath)
+	if err != nil {
+		logger.Err(err)
 	}
 	return nil
 }
