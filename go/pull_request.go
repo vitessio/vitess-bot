@@ -19,10 +19,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/google/go-github/v53/github"
 	"github.com/palantir/go-githubapp/githubapp"
 	"github.com/pkg/errors"
+)
+
+const (
+	backportLabelPrefix    = "Backport to: "
+	forwardportLabelPrefix = "Forwardport to: "
 )
 
 var (
@@ -88,12 +94,6 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 		if err != nil {
 			return err
 		}
-	case "synchronize":
-		prInfo := getPRInformation(event)
-		err := h.createErrorDocumentation(ctx, event, prInfo)
-		if err != nil {
-			return err
-		}
 	case "closed":
 		prInfo := getPRInformation(event)
 		if prInfo.merged {
@@ -101,6 +101,12 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 			if err != nil {
 				return err
 			}
+		}
+	case "synchronize":
+		prInfo := getPRInformation(event)
+		err := h.createErrorDocumentation(ctx, event, prInfo)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -162,7 +168,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	logger.Debug().Msgf("Listing changed files in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	changeDetected, err := detectErrorCodeChanges(ctx, prInfo, client)
 	if err != nil {
-		logger.Err(err)
+		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 	if !changeDetected {
@@ -173,19 +179,19 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 
 	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(prInfo)
 	if err != nil {
-		logger.Err(err)
+		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 
 	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(prInfo)
 	if err != nil {
-		logger.Err(err)
+		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 
 	errorDocContent, docPath, err := generateErrorCodeDocumentation(ctx, client, prInfo, currentVersionDocs, vterrorsgenVitess)
 	if err != nil {
-		logger.Err(err)
+		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 	if errorDocContent == "" {
@@ -195,12 +201,54 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 
 	err = createCommitAndPullRequestForErrorCode(ctx, prInfo, client, logger, errorDocContent, docPath)
 	if err != nil {
-		logger.Err(err)
+		logger.Err(err).Msg(err.Error())
 	}
 	return nil
 }
 
-func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRequestEvent, info prInformation) error {
+func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+	installationID := githubapp.GetInstallationIDFromEvent(&event)
+
+	client, err := h.NewInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+
+	pr, _, err := client.PullRequests.Get(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	if err != nil {
+		logger.Error().Err(err).Msgf("Failed to get Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+		return nil
+	}
+
+	var (
+		backportBranches    []string // list of branches to which we must backport
+		forwardportBranches []string // list of branches to which we must forward-port
+		otherLabels         []string // will be used to apply the original PR's labels to the new PRs
+	)
+	for _, label := range pr.Labels {
+		if label == nil {
+			continue
+		}
+		if strings.HasPrefix(label.GetName(), backportLabelPrefix) {
+			backportBranches = append(backportBranches, strings.Split(label.GetName(), backportLabelPrefix)[1])
+		} else if strings.HasPrefix(label.GetName(), forwardportLabelPrefix) {
+			forwardportBranches = append(forwardportBranches, strings.Split(label.GetName(), forwardportLabelPrefix)[1])
+		} else {
+			otherLabels = append(otherLabels, label.GetName())
+		}
+	}
+
+	mergedCommitSHA := pr.GetMergeCommitSHA()
+
+	for _, branch := range backportBranches {
+		_, err = portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch)
+		if err != nil {
+			logger.Err(err).Msg(err.Error())
+			continue
+		}
+	}
 
 	return nil
 }
