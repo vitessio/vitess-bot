@@ -87,6 +87,12 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 		if err != nil {
 			return err
 		}
+	case "closed":
+		prInfo := getPRInformation(event)
+		err := h.backportPR(ctx, event, prInfo)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -182,5 +188,9 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	if err != nil {
 		logger.Err(err)
 	}
+	return nil
+}
+
+func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRequestEvent, info prInformation) error {
 	return nil
 }
