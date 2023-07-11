@@ -44,15 +44,22 @@ type prInformation struct {
 	num       int
 	repoOwner string
 	repoName  string
+	merged    bool
 }
 
 func getPRInformation(event github.PullRequestEvent) prInformation {
 	repo := event.GetRepo()
+	merged := false
+	pr := event.GetPullRequest()
+	if pr != nil {
+		merged = pr.GetMerged()
+	}
 	return prInformation{
 		repo:      repo,
 		num:       event.GetNumber(),
 		repoOwner: repo.GetOwner().GetLogin(),
 		repoName:  repo.GetName(),
+		merged:    merged,
 	}
 }
 
@@ -89,9 +96,11 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 		}
 	case "closed":
 		prInfo := getPRInformation(event)
-		err := h.backportPR(ctx, event, prInfo)
-		if err != nil {
-			return err
+		if prInfo.merged {
+			err := h.backportPR(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -192,5 +201,6 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 }
 
 func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRequestEvent, info prInformation) error {
+
 	return nil
 }
