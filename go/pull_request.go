@@ -43,7 +43,7 @@ var (
 	}
 )
 
-type PRCommentHandler struct {
+type PullRequestHandler struct {
 	githubapp.ClientCreator
 
 	reviewChecklist string
@@ -66,11 +66,11 @@ func getPRInformation(event github.PullRequestEvent) prInformation {
 	}
 }
 
-func (h *PRCommentHandler) Handles() []string {
+func (h *PullRequestHandler) Handles() []string {
 	return []string{"pull_request"}
 }
 
-func (h *PRCommentHandler) Handle(ctx context.Context, eventType, deliveryID string, payload []byte) error {
+func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID string, payload []byte) error {
 	var event github.PullRequestEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return errors.Wrap(err, "failed to parse issue comment event payload")
@@ -101,7 +101,7 @@ func (h *PRCommentHandler) Handle(ctx context.Context, eventType, deliveryID str
 	return nil
 }
 
-func (h *PRCommentHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -122,7 +122,7 @@ func (h *PRCommentHandler) addReviewChecklist(ctx context.Context, event github.
 	return nil
 }
 
-func (h *PRCommentHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -139,7 +139,7 @@ func (h *PRCommentHandler) addLabels(ctx context.Context, event github.PullReque
 	return nil
 }
 
-func (h *PRCommentHandler) createErrorDocumentation(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)

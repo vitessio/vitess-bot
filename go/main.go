@@ -51,7 +51,7 @@ func main() {
 		panic(err)
 	}
 
-	prCommentHandler := &PRCommentHandler{
+	prCommentHandler := &PullRequestHandler{
 		ClientCreator:   cc,
 		reviewChecklist: cfg.reviewChecklist,
 	}
