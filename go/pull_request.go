@@ -178,7 +178,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 		return nil
 	}
 
-	err = createCommitAndPullRequestForErrorCode(ctx, prInfo, client, logger, errorDocContent, docPath)
+	err = createCommitAndPullRequestForErrorCode(ctx, prInfo, client, errorDocContent, docPath)
 	if err != nil {
 		logger.Err(err)
 	}

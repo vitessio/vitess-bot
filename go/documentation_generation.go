@@ -25,7 +25,6 @@ import (
 
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -48,14 +47,12 @@ func detectErrorCodeChanges(ctx context.Context, prInfo prInformation, client *g
 		}
 		allFiles = append(allFiles, files...)
 	}
-	changeDetected := false
 	for _, file := range allFiles {
 		if file.GetFilename() == "go/vt/vterrors/code.go" {
-			changeDetected = true
-			break
+			return true, nil
 		}
 	}
-	return changeDetected, nil
+	return false, nil
 }
 
 func cloneVitessAndGenerateErrors(prInfo prInformation) (string, error) {
@@ -104,7 +101,12 @@ func cloneWebsiteAndGetCurrentVersionOfDocs(prInfo prInformation) (string, error
 	return string(currentVersionDocsBytes), nil
 }
 
-func generateErrorCodeDocumentation(ctx context.Context, client *github.Client, prInfo prInformation, currentVersionDocs, vterrorsgenVitess string) (string, string, error) {
+func generateErrorCodeDocumentation(
+	ctx context.Context,
+	client *github.Client,
+	prInfo prInformation,
+	currentVersionDocs, vterrorsgenVitess string,
+) (string, string, error) {
 	prDetails, _, err := client.PullRequests.Get(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	if err != nil {
 		return "", "", errors.Wrapf(err, "Failed to get the details of Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
@@ -153,9 +155,7 @@ func createCommitAndPullRequestForErrorCode(
 	ctx context.Context,
 	prInfo prInformation,
 	client *github.Client,
-	logger zerolog.Logger,
-	errorDocContent,
-	docPath string,
+	errorDocContent, docPath string,
 ) error {
 	baseTree := ""
 	parent := ""
