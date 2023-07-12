@@ -71,7 +71,7 @@ func main() {
 
 	http.Handle(githubapp.DefaultWebhookRoute, webhookHandler)
 
-	addr := "127.0.0.1:8080"
+	addr := cfg.address+":8080"
 	logger.Info().Msgf("Starting server on %s...", addr)
 	err = http.ListenAndServe(addr, nil)
 	if err != nil {
