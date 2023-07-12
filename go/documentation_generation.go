@@ -56,7 +56,7 @@ func detectErrorCodeChanges(ctx context.Context, prInfo prInformation, client *g
 }
 
 func cloneVitessAndGenerateErrors(prInfo prInformation) (string, error) {
-	_, err := execCmd("", "git", "clone", fmt.Sprintf("https://github.com/%s/%s", prInfo.repoOwner, prInfo.repoName), "/tmp/vitess")
+	_, err := execCmd("", "git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", prInfo.repoOwner, prInfo.repoName), "/tmp/vitess")
 	if err != nil && !strings.Contains(err.Error(), "already exists and is not an empty directory") {
 		return "", errors.Wrapf(err, "Failed to clone repository %s/%s to generate error code on Pull Request %d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
