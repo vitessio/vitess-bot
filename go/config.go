@@ -28,8 +28,9 @@ type config struct {
 	Github githubapp.Config
 
 	reviewChecklist string
+	address         string
+	logFile         string
 }
-
 
 func readConfig() (*config, error) {
 	err := godotenv.Load()
@@ -61,5 +62,15 @@ func readConfig() (*config, error) {
 		return nil, errors.Wrapf(err, "failed to read review checklist file: %s", pathReviewChecklist)
 	}
 	c.reviewChecklist = string(bytes)
+
+	// Get server address
+	serverAddress := os.Getenv("SERVER_ADDRESS")
+	if serverAddress == "" {
+		serverAddress = "127.0.0.1"
+	}
+	c.address = serverAddress
+
+	// Get log file path
+	c.logFile = os.Getenv("LOG_FILE")
 	return &c, nil
 }
