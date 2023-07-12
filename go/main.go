@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -33,7 +34,17 @@ func main() {
 		panic(err)
 	}
 
-	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	var f io.Writer
+	if cfg.logFile != "" {
+		f, err = os.OpenFile(cfg.logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, os.ModePerm)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		f = os.Stdout
+	}
+
+	logger := zerolog.New(f).With().Timestamp().Logger()
 	zerolog.DefaultContextLogger = &logger
 
 	metricsRegistry := metrics.DefaultRegistry
