@@ -246,18 +246,20 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
 	for _, branch := range backportBranches {
-		_, err = portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
+		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
 			continue
 		}
+		logger.Debug().Msgf("Opened backport Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, newPRID)
 	}
 	for _, branch := range forwardportBranches {
-		_, err = portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
+		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
 			continue
 		}
+		logger.Debug().Msgf("Opened forward Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, newPRID)
 	}
 
 	return nil
