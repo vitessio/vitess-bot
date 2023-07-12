@@ -170,7 +170,7 @@ func portPR(
 		Reviewers: reviewers,
 	})
 	if err != nil {
-		return 0, errors.Wrapf(err, "")
+		return 0, errors.Wrapf(err, "Failed to request reviewers on Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, newPRNumber)
 	}
 
 	return newPRNumber, nil
