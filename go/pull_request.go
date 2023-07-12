@@ -29,6 +29,9 @@ import (
 const (
 	backportLabelPrefix    = "Backport to: "
 	forwardportLabelPrefix = "Forwardport to: "
+
+	backport    = "backport"
+	forwardport = "forwardport"
 )
 
 var (
@@ -243,7 +246,14 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
 	for _, branch := range backportBranches {
-		_, err = portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch)
+		_, err = portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
+		if err != nil {
+			logger.Err(err).Msg(err.Error())
+			continue
+		}
+	}
+	for _, branch := range forwardportBranches {
+		_, err = portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
 			continue

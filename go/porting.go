@@ -25,7 +25,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-func portPR(ctx context.Context, client *github.Client, prInfo prInformation, pr *github.PullRequest, mergedCommitSHA, branch string) (int, error) {
+func portPR(
+	ctx context.Context,
+	client *github.Client,
+	prInfo prInformation,
+	pr *github.PullRequest,
+	mergedCommitSHA, branch, portType string,
+	labels []string,
+) (int, error) {
 	// Get a reference to the release branch
 	releaseRef, _, err := client.Git.GetRef(ctx, prInfo.repoOwner, prInfo.repoName, fmt.Sprintf("heads/%s", branch))
 	if err != nil {
@@ -33,7 +40,7 @@ func portPR(ctx context.Context, client *github.Client, prInfo prInformation, pr
 	}
 
 	// Create a new branch from the release branch
-	newBranch := fmt.Sprintf("port-%d-to-%s", pr.GetNumber(), branch)
+	newBranch := fmt.Sprintf("%s-%d-to-%s", portType, pr.GetNumber(), branch)
 	newRef := &github.Reference{
 		Ref: github.String("refs/heads/" + newBranch),
 		Object: &github.GitObject{
@@ -42,9 +49,8 @@ func portPR(ctx context.Context, client *github.Client, prInfo prInformation, pr
 	}
 	_, _, err = client.Git.CreateRef(ctx, prInfo.repoOwner, prInfo.repoName, newRef)
 	if err != nil {
-		return 0, errors.Wrapf(err, "")
+		return 0, errors.Wrapf(err, "Failed to create git ref %s on repository %s/%s to backport Pull Request %d", newBranch, prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
-
 
 	// Clone the repository
 	_, err = execCmd("", "git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", prInfo.repoOwner, prInfo.repoName), "/tmp/vitess")
@@ -64,18 +70,22 @@ func portPR(ctx context.Context, client *github.Client, prInfo prInformation, pr
 		return 0, errors.Wrapf(err, "Failed to checkout repository %s/%s to branch %s to backport Pull Request %d", prInfo.repoOwner, prInfo.repoName, newBranch, prInfo.num)
 	}
 
+	conflict := false
+
 	// Cherry-pick the commit
 	_, err = execCmd("/tmp/vitess", "git", "cherry-pick", "-m", "1", mergedCommitSHA)
-	if err != nil && strings.Contains(err.Error(), "after resolving the conflicts, mark the corrected paths") {
+	if err != nil && strings.Contains(err.Error(), "conflicts") {
 		_, err = execCmd("/tmp/vitess", "git", "add", ".")
 		if err != nil {
 			return 0, errors.Wrapf(err, "Failed to do 'git add' on branch %s to backport Pull Request %d", newBranch, prInfo.num)
 		}
 
-		_, err = execCmd("/tmp/vitess", "git", "commit", "--author=\"vitess-bot[bot] <108069721+vitess-bot[bot]@users.noreply.github.com>\"", "-m", fmt.Sprintf("\"Cherry-pick %s with conflicts\"", mergedCommitSHA))
+		_, err = execCmd("/tmp/vitess", "git", "commit", "--author=\"vitess-bot[bot] <108069721+vitess-bot[bot]@users.noreply.github.com>\"", "-m", fmt.Sprintf("Cherry-pick %s with conflicts", mergedCommitSHA))
 		if err != nil {
 			return 0, errors.Wrapf(err, "Failed to do 'git commit' on branch %s to backport Pull Request %d", newBranch, prInfo.num)
 		}
+
+		conflict = true
 	} else if err != nil {
 		return 0, errors.Wrapf(err, "Failed to cherry-pick %s to branch %s to backport Pull Request %d", mergedCommitSHA, newBranch, prInfo.num)
 	} else {
@@ -96,13 +106,72 @@ func portPR(ctx context.Context, client *github.Client, prInfo prInformation, pr
 		Title:               github.String(fmt.Sprintf("[%s] %s (#%d)", branch, pr.GetTitle(), pr.GetNumber())),
 		Head:                github.String(newBranch),
 		Base:                github.String(branch),
-		Body:                github.String(fmt.Sprintf("## Description\nThis is a backport of #%d", pr.GetNumber())),
+		Body:                github.String(fmt.Sprintf("## Description\nThis is a %s of #%d", portType, pr.GetNumber())),
 		MaintainerCanModify: github.Bool(true),
+		Draft:               &conflict,
 	}
 	newPRCreated, _, err := client.PullRequests.Create(ctx, prInfo.repoOwner, prInfo.repoName, newPR)
 	if err != nil {
 		return 0, errors.Wrapf(err, "")
 	}
 
-	return newPRCreated.GetNumber(), nil
+	labelsToAdd := labels
+	if conflict {
+		labelsToAdd = append(labelsToAdd, "Merge Conflict", "Skip CI")
+	}
+	switch portType {
+	case backport:
+		labelsToAdd = append(labelsToAdd, "Backport")
+	case forwardport:
+		labelsToAdd = append(labelsToAdd, "Forwardport")
+	}
+
+	newPRNumber := newPRCreated.GetNumber()
+	if _, _, err = client.Issues.AddLabelsToIssue(ctx, prInfo.repoOwner, prInfo.repoName, newPRNumber, labelsToAdd); err != nil {
+		return 0, errors.Wrapf(err, "Failed to assign labels to Pull Request %d", newPRNumber)
+	}
+
+	originalPRAuthor := pr.GetUser().GetLogin()
+	if conflict {
+		conflictCommentBody := fmt.Sprintf(
+			"Hello @%s, there are conflicts in this %s.\n\nPlease addresse them in order to merge this Pull Request. You can execute the snippet below to reset your branch and resolve the conflict manually.\n\nMake sure you replace `origin` by the name of the %s/%s remote \n```\ngit fetch --all\ngh pr checkout %d -R %s/%s\ngit reset --hard origin/%s\ngit cherry-pick -m 1 %s\n",
+			originalPRAuthor,
+			portType,
+			prInfo.repoOwner,
+			prInfo.repoName,
+			newPRNumber,
+			prInfo.repoOwner,
+			prInfo.repoName,
+			branch,
+			mergedCommitSHA,
+		)
+		prCommentConflict := github.IssueComment{
+			Body: &conflictCommentBody,
+		}
+		if _, _, err := client.Issues.CreateComment(ctx, prInfo.repoOwner, prInfo.repoName, newPRNumber, &prCommentConflict); err != nil {
+			return 0, errors.Wrapf(err, "Failed to comment conflict notice on Pull Request %d", newPRNumber)
+		}
+	}
+
+	oldReviewers, _, err := client.PullRequests.ListReviewers(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num,  nil)
+	if err != nil {
+		return 0, errors.Wrapf(err, "Failed to get the list of reviewers on Pull Request %d", prInfo.num)
+	}
+
+	var reviewers []string
+	for _, user := range oldReviewers.Users {
+		reviewers = append(reviewers, user.GetLogin())
+	}
+	for _, team := range oldReviewers.Teams {
+		reviewers = append(reviewers, team.GetName())
+	}
+	reviewers = append(reviewers, originalPRAuthor)
+	_, _, err = client.PullRequests.RequestReviewers(ctx, prInfo.repoOwner, prInfo.repoName, newPRNumber, github.ReviewersRequest{
+		Reviewers: reviewers,
+	})
+	if err != nil {
+		return 0, errors.Wrapf(err, "")
+	}
+
+	return newPRNumber, nil
 }
