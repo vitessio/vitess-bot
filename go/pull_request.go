@@ -85,21 +85,23 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 	switch event.GetAction() {
 	case "opened":
 		prInfo := getPRInformation(event)
-		err := h.addReviewChecklist(ctx, event, prInfo)
-		if err != nil {
-			return err
-		}
-		err = h.addLabels(ctx, event, prInfo)
-		if err != nil {
-			return err
-		}
-		err = h.createErrorDocumentation(ctx, event, prInfo)
-		if err != nil {
-			return err
+		if prInfo.repoName == "vitess" {
+			err := h.addReviewChecklist(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
+			err = h.addLabels(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
+			err = h.createErrorDocumentation(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
 		}
 	case "closed":
 		prInfo := getPRInformation(event)
-		if prInfo.merged {
+		if prInfo.merged && prInfo.repoName == "vitess" {
 			err := h.backportPR(ctx, event, prInfo)
 			if err != nil {
 				return err
@@ -107,9 +109,11 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 		}
 	case "synchronize":
 		prInfo := getPRInformation(event)
-		err := h.createErrorDocumentation(ctx, event, prInfo)
-		if err != nil {
-			return err
+		if prInfo.repoName == "vitess" {
+			err := h.createErrorDocumentation(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
