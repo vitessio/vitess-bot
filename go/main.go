@@ -52,7 +52,7 @@ func main() {
 	cc, err := githubapp.NewDefaultCachingClientCreator(
 		cfg.Github,
 		githubapp.WithClientUserAgent("vitess-bot/1.0.0"),
-		githubapp.WithClientTimeout(3*time.Second),
+		githubapp.WithClientTimeout(5*time.Second),
 		githubapp.WithClientCaching(false, func() httpcache.Cache { return httpcache.NewMemoryCache() }),
 		githubapp.WithClientMiddleware(
 			githubapp.ClientMetrics(metricsRegistry),
@@ -67,11 +67,17 @@ func main() {
 		reviewChecklist: cfg.reviewChecklist,
 	}
 
-	webhookHandler := githubapp.NewDefaultEventDispatcher(cfg.Github, prCommentHandler)
+	webhookHandler := githubapp.NewEventDispatcher(
+		[]githubapp.EventHandler{prCommentHandler},
+		cfg.Github.App.WebhookSecret,
+		githubapp.WithScheduler(
+			githubapp.AsyncScheduler(),
+		),
+	)
 
 	http.Handle(githubapp.DefaultWebhookRoute, webhookHandler)
 
-	addr := cfg.address+":8080"
+	addr := cfg.address + ":8080"
 	logger.Info().Msgf("Starting server on %s...", addr)
 	err = http.ListenAndServe(addr, nil)
 	if err != nil {

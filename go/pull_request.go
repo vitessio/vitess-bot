@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/google/go-github/v53/github"
 	"github.com/palantir/go-githubapp/githubapp"
@@ -46,6 +47,9 @@ type PullRequestHandler struct {
 	githubapp.ClientCreator
 
 	reviewChecklist string
+
+	vitessRepoLock  sync.Mutex
+	websiteRepoLock sync.Mutex
 }
 
 type prInformation struct {
@@ -184,19 +188,25 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 	logger.Debug().Msgf("Change detect to 'go/vt/vterrors/code.go' in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 
+	h.vitessRepoLock.Lock()
 	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(prInfo)
+	h.vitessRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 
+	h.websiteRepoLock.Lock()
 	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(prInfo)
+	h.websiteRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 
+	h.websiteRepoLock.Lock()
 	errorDocContent, docPath, err := generateErrorCodeDocumentation(ctx, client, prInfo, currentVersionDocs, vterrorsgenVitess)
+	h.websiteRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 		return nil
@@ -247,10 +257,19 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 		}
 	}
 
+	if len(backportBranches) > 0 {
+		logger.Debug().Msgf("Will backport Pull Request %s/%s#%d to branches %v", prInfo.repoOwner, prInfo.repoName, prInfo.num, backportBranches)
+	}
+	if len(forwardportBranches) > 0 {
+		logger.Debug().Msgf("Will forwardport Pull Request %s/%s#%d to branches %v", prInfo.repoOwner, prInfo.repoName, prInfo.num, forwardportBranches)
+	}
+
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
 	for _, branch := range backportBranches {
+		h.vitessRepoLock.Lock()
 		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
+		h.vitessRepoLock.Unlock()
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
 			continue
@@ -258,7 +277,9 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 		logger.Debug().Msgf("Opened backport Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, newPRID)
 	}
 	for _, branch := range forwardportBranches {
+		h.vitessRepoLock.Lock()
 		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
+		h.vitessRepoLock.Unlock()
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
 			continue

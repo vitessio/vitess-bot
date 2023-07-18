@@ -66,7 +66,7 @@ func cherryPickAndPortPR(
 	// Get a reference to the release branch
 	releaseRef, _, err := client.Git.GetRef(ctx, originalPRInfo.repoOwner, originalPRInfo.repoName, fmt.Sprintf("heads/%s", branch))
 	if err != nil {
-		return nil, false, errors.Wrapf(err, "")
+		return nil, false, errors.Wrapf(err, "Failed to get reference on repository %s/%s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 
 	// Create a new branch from the release branch
@@ -138,7 +138,7 @@ func cherryPickAndPortPR(
 	}
 
 	// Push the changes
-	_, err = execCmd("/tmp/vitess", "git", "push", "origin", newBranch)
+	_, err = execCmd("/tmp/vitess", "git", "push", "-f", "origin", newBranch)
 	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to push %s to backport Pull Request %s", newBranch, originalPRInfo.num)
 	}
