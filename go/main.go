@@ -67,7 +67,9 @@ func main() {
 		reviewChecklist: cfg.reviewChecklist,
 	}
 
-	webhookHandler := githubapp.NewDefaultEventDispatcher(cfg.Github, prCommentHandler)
+	webhookHandler := githubapp.NewEventDispatcher([]githubapp.EventHandler{prCommentHandler}, cfg.Github.App.WebhookSecret, githubapp.WithScheduler(
+		githubapp.QueueAsyncScheduler(1, 1),
+	))
 
 	http.Handle(githubapp.DefaultWebhookRoute, webhookHandler)
 

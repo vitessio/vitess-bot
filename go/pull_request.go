@@ -247,6 +247,13 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 		}
 	}
 
+	if len(backportBranches) > 0 {
+		logger.Debug().Msgf("Will backport Pull Request %s/%s#%d to branches %v", prInfo.repoOwner, prInfo.repoName, prInfo.num, backportBranches)
+	}
+	if len(forwardportBranches) > 0 {
+		logger.Debug().Msgf("Will forwardport Pull Request %s/%s#%d to branches %v", prInfo.repoOwner, prInfo.repoName, prInfo.num, forwardportBranches)
+	}
+
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
 	for _, branch := range backportBranches {
