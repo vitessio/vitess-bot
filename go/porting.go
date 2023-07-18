@@ -100,6 +100,12 @@ func cherryPickAndPortPR(
 		return nil, false, errors.Wrapf(err, "Failed to fetch origin on repository %s/%s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 
+	// Reset the repository
+	_, err = execCmd("/tmp/vitess", "git", "reset", "--hard", "HEAD")
+	if err != nil {
+		return nil, false, errors.Wrapf(err, "Failed to reset the repository %s/%s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
+	}
+
 	// Checkout the new branch
 	_, err = execCmd("/tmp/vitess", "git", "checkout", newBranch)
 	if err != nil {
