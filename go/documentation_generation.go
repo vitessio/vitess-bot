@@ -62,6 +62,12 @@ func cloneVitessAndGenerateErrors(prInfo prInformation) (string, error) {
 		return "", errors.Wrapf(err, "Failed to clone repository %s/%s to generate error code on Pull Request %d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
+	// Clean the repository
+	_, err = execCmd("/tmp/vitess", "git", "clean", "-fd")
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed to clean the repository %s/%s to generate documentation %d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	}
+
 	_, err = execCmd("/tmp/vitess", "git", "fetch", "origin", fmt.Sprintf("refs/pull/%d/head", prInfo.num))
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
