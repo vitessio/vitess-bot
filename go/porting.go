@@ -138,7 +138,7 @@ func cherryPickAndPortPR(
 	}
 
 	// Push the changes
-	_, err = execCmd("/tmp/vitess", "git", "push", "origin", newBranch)
+	_, err = execCmd("/tmp/vitess", "git", "push", "-f", "origin", newBranch)
 	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to push %s to backport Pull Request %s", newBranch, originalPRInfo.num)
 	}
