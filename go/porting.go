@@ -78,7 +78,7 @@ func cherryPickAndPortPR(
 		},
 	}
 	_, _, err = client.Git.CreateRef(ctx, originalPRInfo.repoOwner, originalPRInfo.repoName, newRef)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		return nil, false, errors.Wrapf(err, "Failed to create git ref %s on repository %s/%s to backport Pull Request %d", newBranch, originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 
