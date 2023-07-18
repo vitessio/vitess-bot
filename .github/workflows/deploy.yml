@@ -32,4 +32,4 @@ jobs:
             killall -9 vitess-bot
             source ~/.profile
             go build -o vitess-bot ./...
-            ./vitess-bot &
+            nohup ./vitess-bot &

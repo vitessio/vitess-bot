@@ -44,6 +44,7 @@ func detectErrorCodeChanges(ctx context.Context, prInfo prInformation, client *g
 		}
 		if len(files) < rowsPerPage {
 			cont = false
+			break
 		}
 		allFiles = append(allFiles, files...)
 	}
