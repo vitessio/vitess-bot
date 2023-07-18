@@ -52,7 +52,7 @@ func main() {
 	cc, err := githubapp.NewDefaultCachingClientCreator(
 		cfg.Github,
 		githubapp.WithClientUserAgent("vitess-bot/1.0.0"),
-		githubapp.WithClientTimeout(30*time.Second),
+		githubapp.WithClientTimeout(5*time.Second),
 		githubapp.WithClientCaching(false, func() httpcache.Cache { return httpcache.NewMemoryCache() }),
 		githubapp.WithClientMiddleware(
 			githubapp.ClientMetrics(metricsRegistry),
