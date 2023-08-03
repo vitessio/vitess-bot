@@ -4,7 +4,7 @@ Hello reviewers! :wave: Please follow this checklist when reviewing this Pull Re
 
 #### General
 - [ ] Ensure that the Pull Request has a descriptive title.
-- [ ] Ensure there is a link to an issue (except for internal cleanup and flaky test fixes), new features should have an RFC that documents uses and test cases.
+- [ ] Ensure there is a link to an issue (except for internal cleanup and flaky test fixes), new features should have an RFC that documents use cases and test cases.
 
 #### Tests
 - [ ] Bug fixes should have at least one unit or end-to-end test, enhancement and new features should have a sufficient number of tests.
