@@ -82,6 +82,7 @@ func getPRInformation(event github.PullRequestEvent) prInformation {
 		repoOwner: repo.GetOwner().GetLogin(),
 		repoName:  repo.GetName(),
 		merged:    merged,
+		labels:    labels,
 	}
 }
 
