@@ -36,6 +36,7 @@ const (
 )
 
 var (
+	// these labels are added to PRs that are opened on vitess/vitess, and are not backports or forwardports
 	alwaysAddLabels = []string{
 		"NeedsWebsiteDocsUpdate",
 		"NeedsDescriptionUpdate",
@@ -58,6 +59,7 @@ type prInformation struct {
 	repoOwner string
 	repoName  string
 	merged    bool
+	labels    []string
 }
 
 func getPRInformation(event github.PullRequestEvent) prInformation {
@@ -66,6 +68,13 @@ func getPRInformation(event github.PullRequestEvent) prInformation {
 	pr := event.GetPullRequest()
 	if pr != nil {
 		merged = pr.GetMerged()
+	}
+	var labels []string
+	for _, label := range event.GetPullRequest().Labels {
+		if label == nil {
+			continue
+		}
+		labels = append(labels, label.GetName())
 	}
 	return prInformation{
 		repo:      repo,
@@ -146,13 +155,20 @@ func (h *PullRequestHandler) addReviewChecklist(ctx context.Context, event githu
 
 func (h *PullRequestHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+
+	for _, label := range prInfo.labels {
+		if strings.EqualFold(label, backport) || strings.EqualFold(label, forwardport) {
+			logger.Debug().Msgf("Pull Request %s/%s#%d has label %s, skipping adding initial labels",
+				prInfo.repoOwner, prInfo.repoName, prInfo.num, label)
+			return nil
+		}
+	}
 
 	client, err := h.NewInstallationClient(installationID)
 	if err != nil {
 		return err
 	}
-
-	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
 
 	logger.Debug().Msgf("Adding initial labels to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	if _, _, err := client.Issues.AddLabelsToIssue(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num, alwaysAddLabels); err != nil {
