@@ -42,11 +42,11 @@ func detectErrorCodeChanges(ctx context.Context, prInfo prInformation, client *g
 		if err != nil {
 			return false, errors.Wrapf(err, "Failed to list changed files in Pull Request %s/%s#%d - at page %d", prInfo.repoOwner, prInfo.repoName, prInfo.num, page)
 		}
+		allFiles = append(allFiles, files...)
 		if len(files) < rowsPerPage {
 			cont = false
 			break
 		}
-		allFiles = append(allFiles, files...)
 	}
 	for _, file := range allFiles {
 		if file.GetFilename() == "go/vt/vterrors/code.go" {
