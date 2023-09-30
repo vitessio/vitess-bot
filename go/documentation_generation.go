@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
+	"github.com/vitess.io/vitess-bot/go/shell"
 )
 
 const (
@@ -57,28 +58,28 @@ func detectErrorCodeChanges(ctx context.Context, prInfo prInformation, client *g
 }
 
 func cloneVitessAndGenerateErrors(prInfo prInformation) (string, error) {
-	_, err := execCmd("", "git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", prInfo.repoOwner, prInfo.repoName), "/tmp/vitess")
+	_, err := shell.New("git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", prInfo.repoOwner, prInfo.repoName), "/tmp/vitess").Output()
 	if err != nil && !strings.Contains(err.Error(), "already exists and is not an empty directory") {
 		return "", errors.Wrapf(err, "Failed to clone repository %s/%s to generate error code on Pull Request %d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
 	// Clean the repository
-	_, err = execCmd("/tmp/vitess", "git", "clean", "-fd")
+	_, err = shell.New("git", "clean", "-fd").InDir("/tmp/vitess").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to clean the repository %s/%s to generate documentation %d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
-	_, err = execCmd("/tmp/vitess", "git", "fetch", "origin", fmt.Sprintf("refs/pull/%d/head", prInfo.num))
+	_, err = shell.New("git", "fetch", "origin", fmt.Sprintf("refs/pull/%d/head", prInfo.num)).InDir("/tmp/vitess").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
-	_, err = execCmd("/tmp/vitess", "git", "checkout", "FETCH_HEAD")
+	_, err = shell.New("git", "checkout", "FETCH_HEAD").InDir("/tmp/vitess").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to checkout on Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
-	vterrorsgenVitessBytes, err := execCmd("/tmp/vitess", "go", "run", "./go/vt/vterrors/vterrorsgen")
+	vterrorsgenVitessBytes, err := shell.New("go", "run", "./go/vt/vterrors/vterrorsgen").InDir("/tmp/vitess").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to run ./go/vt/vterrors/vterrorsgen on Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
@@ -86,22 +87,22 @@ func cloneVitessAndGenerateErrors(prInfo prInformation) (string, error) {
 }
 
 func cloneWebsiteAndGetCurrentVersionOfDocs(prInfo prInformation) (string, error) {
-	_, err := execCmd("/tmp", "git", "clone", fmt.Sprintf("https://github.com/%s/website", prInfo.repoOwner))
+	_, err := shell.New("git", "clone", fmt.Sprintf("https://github.com/%s/website", prInfo.repoOwner)).InDir("/tmp").Output()
 	if err != nil && !strings.Contains(err.Error(), "already exists and is not an empty directory") {
 		return "", errors.Wrapf(err, "Failed to clone repository vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	_, err = execCmd("/tmp/website", "git", "pull")
+	_, err = shell.New("git", "pull").InDir("/tmp/website").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to fetch vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	_, err = execCmd("", "cp", "./tools/get_release_from_docs.sh", "/tmp/website")
+	_, err := shell.New("cp", "./tools/get_release_from_docs.sh", "/tmp/website").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to copy ./tools/get_release_from_docs.sh to local clone of website repo to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	currentVersionDocsBytes, err := execCmd("/tmp/website", "./get_release_from_docs.sh")
+	currentVersionDocsBytes, err := shell.New("./get_release_from_docs.sh").InDir("/tmp/website").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to get current documentation version from config.toml in vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
@@ -128,7 +129,7 @@ func generateErrorCodeDocumentation(
 	}
 
 	docPath := "/tmp/website/content/en/docs/" + currentVersionDocs + "/reference/errors/query-serving.md"
-	queryServingErrorsBytes, err := execCmd("/tmp/website", "cat", docPath)
+	queryServingErrorsBytes, err := shell.NewContext(ctx, "cat", docPath).InDir("/tmp/website").Output()
 	if err != nil {
 		return "", "", errors.Wrapf(err, "Failed to cat the query serving error file (%s) to generate error code for Pull Request %d", docPath, prInfo.num)
 	}
@@ -143,7 +144,7 @@ func generateErrorCodeDocumentation(
 		return "", "", errors.Wrapf(err, "Cannot write file (%s) to generate errors of Pull Request %d", docPath, prInfo.num)
 	}
 
-	statusBytes, err := execCmd("/tmp/website", "git", "status", "-s")
+	statusBytes, err := shell.NewContext(ctx, "git", "status", "-s").InDir("/tmp/website").Output()
 	if err != nil {
 		return "", "", errors.Wrapf(err, "Failed to do git status on vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}

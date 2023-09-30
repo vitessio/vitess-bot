@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
+	"github.com/vitess.io/vitess-bot/go/shell"
 )
 
 func portPR(
@@ -83,31 +84,31 @@ func cherryPickAndPortPR(
 	}
 
 	// Clone the repository
-	_, err = execCmd("", "git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", originalPRInfo.repoOwner, originalPRInfo.repoName), "/tmp/vitess")
+	_, err = shell.NewContext(ctx, "git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", originalPRInfo.repoOwner, originalPRInfo.repoName), "/tmp/vitess").Output()
 	if err != nil && !strings.Contains(err.Error(), "already exists and is not an empty directory") {
 		return nil, false, errors.Wrapf(err, "Failed to clone repository %s/%s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 
 	// Clean the repository
-	_, err = execCmd("/tmp/vitess", "git", "clean", "-fd")
+	_, err = shell.NewContext(ctx, "git", "clean", "-fd").InDir("/tmp/vitess").Output()
 	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to clean the repository %s/%s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 
 	// Fetch origin
-	_, err = execCmd("/tmp/vitess", "git", "fetch", "origin")
+	_, err = shell.NewContext(ctx, "git", "fetch", "origin").InDir("/tmp/vitess").Output()
 	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to fetch origin on repository %s/%s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 
 	// Reset the repository
-	_, err = execCmd("/tmp/vitess", "git", "reset", "--hard", "HEAD")
+	_, err = shell.NewContext(ctx, "git", "reset", "--hard", "HEAD").InDir("/tmp/vitess").Output()
 	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to reset the repository %s/%s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 
 	// Checkout the new branch
-	_, err = execCmd("/tmp/vitess", "git", "checkout", newBranch)
+	_, err = shell.NewContext(ctx, "git", "checkout", newBranch).InDir("/tmp/vitess").Output()
 	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to checkout repository %s/%s to branch %s to backport Pull Request %d", originalPRInfo.repoOwner, originalPRInfo.repoName, newBranch, originalPRInfo.num)
 	}
@@ -115,14 +116,14 @@ func cherryPickAndPortPR(
 	conflict := false
 
 	// Cherry-pick the commit
-	_, err = execCmd("/tmp/vitess", "git", "cherry-pick", "-m", "1", mergedCommitSHA)
+	_, err = shell.NewContext(ctx, "git", "cherry-pick", "-m", "1", mergedCommitSHA).InDir("/tmp/vitess").Output()
 	if err != nil && strings.Contains(err.Error(), "conflicts") {
-		_, err = execCmd("/tmp/vitess", "git", "add", ".")
+		_, err = shell.NewContext(ctx, "git", "add", ".").InDir("/tmp/vitess").Output()
 		if err != nil {
 			return nil, false, errors.Wrapf(err, "Failed to do 'git add' on branch %s to backport Pull Request %d", newBranch, originalPRInfo.num)
 		}
 
-		_, err = execCmd("/tmp/vitess", "git", "commit", "--author=\"vitess-bot[bot] <108069721+vitess-bot[bot]@users.noreply.github.com>\"", "-m", fmt.Sprintf("Cherry-pick %s with conflicts", mergedCommitSHA))
+		_, err = shell.NewContext(ctx, "git", "commit", "--author=\"vitess-bot[bot] <108069721+vitess-bot[bot]@users.noreply.github.com>\"", "-m", fmt.Sprintf("Cherry-pick %s with conflicts", mergedCommitSHA)).InDir("/tmp/vitess").Output()
 		if err != nil {
 			return nil, false, errors.Wrapf(err, "Failed to do 'git commit' on branch %s to backport Pull Request %d", newBranch, originalPRInfo.num)
 		}
@@ -131,14 +132,14 @@ func cherryPickAndPortPR(
 	} else if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to cherry-pick %s to branch %s to backport Pull Request %d", mergedCommitSHA, newBranch, originalPRInfo.num)
 	} else {
-		_, err = execCmd("/tmp/vitess", "git", "commit", "--amend", "--author=\"vitess-bot[bot] <108069721+vitess-bot[bot]@users.noreply.github.com>\"", "--no-edit")
+		_, err = shell.NewContext(ctx, "git", "commit", "--amend", "--author=\"vitess-bot[bot] <108069721+vitess-bot[bot]@users.noreply.github.com>\"", "--no-edit").InDir("/tmp/vitess").Output()
 		if err != nil {
 			return nil, false, errors.Wrapf(err, "Failed to do 'git commit --amend' on branch %s to backport Pull Request %d", newBranch, originalPRInfo.num)
 		}
 	}
 
 	// Push the changes
-	_, err = execCmd("/tmp/vitess", "git", "push", "-f", "origin", newBranch)
+	_, err = shell.NewContext(ctx, "git", "push", "-f", "origin", newBranch).InDir("/tmp/vitess").Output()
 	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to push %s to backport Pull Request %s", newBranch, originalPRInfo.num)
 	}
