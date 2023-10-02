@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-github/v53/github"
 	"github.com/palantir/go-githubapp/githubapp"
 	"github.com/pkg/errors"
+	"github.com/vitess.io/vitess-bot/go/git"
 )
 
 const (
@@ -205,16 +206,27 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 	logger.Debug().Msgf("Change detect to 'go/vt/vterrors/code.go' in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 
+	vitess := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: "/tmp/vitess",
+	}
 	h.vitessRepoLock.Lock()
-	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(prInfo)
+	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(ctx, vitess, prInfo)
 	h.vitessRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 
+	website := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     "website",
+		LocalDir: "/tmp/website",
+	}
+
 	h.websiteRepoLock.Lock()
-	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(prInfo)
+	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(ctx, website, prInfo)
 	h.websiteRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
@@ -222,7 +234,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 
 	h.websiteRepoLock.Lock()
-	errorDocContent, docPath, err := generateErrorCodeDocumentation(ctx, client, prInfo, currentVersionDocs, vterrorsgenVitess)
+	errorDocContent, docPath, err := generateErrorCodeDocumentation(ctx, client, website, prInfo, currentVersionDocs, vterrorsgenVitess)
 	h.websiteRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
@@ -281,11 +293,16 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 		logger.Debug().Msgf("Will forwardport Pull Request %s/%s#%d to branches %v", prInfo.repoOwner, prInfo.repoName, prInfo.num, forwardportBranches)
 	}
 
+	vitessRepo := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: "/tmp/vitess",
+	}
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
 	for _, branch := range backportBranches {
 		h.vitessRepoLock.Lock()
-		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
+		newPRID, err := portPR(ctx, client, vitessRepo, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
 		h.vitessRepoLock.Unlock()
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
@@ -295,7 +312,7 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	}
 	for _, branch := range forwardportBranches {
 		h.vitessRepoLock.Lock()
-		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
+		newPRID, err := portPR(ctx, client, vitessRepo, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
 		h.vitessRepoLock.Unlock()
 		if err != nil {
 			logger.Err(err).Msg(err.Error())

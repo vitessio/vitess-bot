@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
+	"github.com/vitess.io/vitess-bot/go/git"
 	"github.com/vitess.io/vitess-bot/go/shell"
 )
 
@@ -57,47 +58,41 @@ func detectErrorCodeChanges(ctx context.Context, prInfo prInformation, client *g
 	return false, nil
 }
 
-func cloneVitessAndGenerateErrors(prInfo prInformation) (string, error) {
-	_, err := shell.New("git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", prInfo.repoOwner, prInfo.repoName), "/tmp/vitess").Output()
-	if err != nil && !strings.Contains(err.Error(), "already exists and is not an empty directory") {
+func cloneVitessAndGenerateErrors(ctx context.Context, vitess *git.Repo, prInfo prInformation) (string, error) {
+	if err := vitess.Clone(ctx); err != nil {
 		return "", errors.Wrapf(err, "Failed to clone repository %s/%s to generate error code on Pull Request %d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
 	// Clean the repository
-	_, err = shell.New("git", "clean", "-fd").InDir("/tmp/vitess").Output()
-	if err != nil {
+	if err := vitess.Clean(ctx); err != nil {
 		return "", errors.Wrapf(err, "Failed to clean the repository %s/%s to generate documentation %d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
-	_, err = shell.New("git", "fetch", "origin", fmt.Sprintf("refs/pull/%d/head", prInfo.num)).InDir("/tmp/vitess").Output()
-	if err != nil {
+	if err := vitess.FetchRef(ctx, "origin", fmt.Sprintf("refs/pull/%d/head", prInfo.num)); err != nil {
 		return "", errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
-	_, err = shell.New("git", "checkout", "FETCH_HEAD").InDir("/tmp/vitess").Output()
-	if err != nil {
+	if err := vitess.Checkout(ctx, "FETCH_HEAD"); err != nil {
 		return "", errors.Wrapf(err, "Failed to checkout on Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
-	vterrorsgenVitessBytes, err := shell.New("go", "run", "./go/vt/vterrors/vterrorsgen").InDir("/tmp/vitess").Output()
+	vterrorsgenVitessBytes, err := shell.NewContext(ctx, "go", "run", "./go/vt/vterrors/vterrorsgen").InDir("/tmp/vitess").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to run ./go/vt/vterrors/vterrorsgen on Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 	return string(vterrorsgenVitessBytes), err
 }
 
-func cloneWebsiteAndGetCurrentVersionOfDocs(prInfo prInformation) (string, error) {
-	_, err := shell.New("git", "clone", fmt.Sprintf("https://github.com/%s/website", prInfo.repoOwner)).InDir("/tmp").Output()
-	if err != nil && !strings.Contains(err.Error(), "already exists and is not an empty directory") {
+func cloneWebsiteAndGetCurrentVersionOfDocs(ctx context.Context, website *git.Repo, prInfo prInformation) (string, error) {
+	if err := website.Clone(ctx); err != nil {
 		return "", errors.Wrapf(err, "Failed to clone repository vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	_, err = shell.New("git", "pull").InDir("/tmp/website").Output()
-	if err != nil {
+	if err := website.Clean(ctx); err != nil {
 		return "", errors.Wrapf(err, "Failed to fetch vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	_, err := shell.New("cp", "./tools/get_release_from_docs.sh", "/tmp/website").Output()
+	_, err := shell.NewContext(ctx, "cp", "./tools/get_release_from_docs.sh", "/tmp/website").Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to copy ./tools/get_release_from_docs.sh to local clone of website repo to generate error code on Pull Request %d", prInfo.num)
 	}
@@ -112,6 +107,7 @@ func cloneWebsiteAndGetCurrentVersionOfDocs(prInfo prInformation) (string, error
 func generateErrorCodeDocumentation(
 	ctx context.Context,
 	client *github.Client,
+	website *git.Repo,
 	prInfo prInformation,
 	currentVersionDocs, vterrorsgenVitess string,
 ) (string, string, error) {
@@ -144,7 +140,7 @@ func generateErrorCodeDocumentation(
 		return "", "", errors.Wrapf(err, "Cannot write file (%s) to generate errors of Pull Request %d", docPath, prInfo.num)
 	}
 
-	statusBytes, err := shell.NewContext(ctx, "git", "status", "-s").InDir("/tmp/website").Output()
+	statusBytes, err := website.Status(ctx, "-s")
 	if err != nil {
 		return "", "", errors.Wrapf(err, "Failed to do git status on vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
