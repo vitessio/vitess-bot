@@ -168,7 +168,7 @@ func createCommitAndPullRequestForErrorCode(
 	refName := "refs/heads/" + branchName
 	branch, r, err := client.Repositories.GetBranch(ctx, prInfo.repoOwner, "website", branchName, false)
 	if r.StatusCode != http.StatusNotFound && err != nil {
-		return errors.Wrapf(err, "Failed to get branch on vitessio/website to generate error code on Pull Request %d", prInfo.num)
+		return errors.Wrapf(err, "Failed to get branch %s on vitessio/website to generate error code on Pull Request %d", branchName, prInfo.num)
 	}
 
 	// If the branchName is not a branch on the repository, we will receive a http.StatusNotFound status code
