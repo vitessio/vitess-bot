@@ -89,7 +89,11 @@ func cloneWebsiteAndGetCurrentVersionOfDocs(ctx context.Context, website *git.Re
 	}
 
 	if err := website.Clean(ctx); err != nil {
-		return "", errors.Wrapf(err, "Failed to fetch vitessio/website to generate error code on Pull Request %d", prInfo.num)
+		return "", errors.Wrapf(err, "Failed to clean vitessio/website to generate error code on Pull Request %d", prInfo.num)
+	}
+
+	if err := website.Pull(ctx); err != nil {
+		return "", errors.Wrapf(err, "Failed to pull vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
 
 	_, err := shell.NewContext(ctx, "cp", "./tools/get_release_from_docs.sh", "/tmp/website").Output()
