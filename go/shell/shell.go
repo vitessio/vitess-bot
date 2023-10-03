@@ -19,6 +19,7 @@ package shell
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 )
 
@@ -54,6 +55,10 @@ func (c *cmd) WithEnv(env ...string) *cmd {
 //
 // Must be called before running the command.
 func (c *cmd) WithExtraEnv(env ...string) *cmd {
+	if c.Env == nil {
+		c.Env = os.Environ()
+	}
+
 	c.Env = append(c.Env, env...)
 	return c
 }
