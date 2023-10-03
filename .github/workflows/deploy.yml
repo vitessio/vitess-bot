@@ -31,5 +31,5 @@ jobs:
             git checkout FETCH_HEAD
             killall -9 vitess-bot
             source ~/.profile
-            go build -o vitess-bot ./...
+            go build -o vitess-bot ./go
             nohup ./vitess-bot &

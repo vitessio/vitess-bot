@@ -19,12 +19,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"runtime/debug"
 	"strings"
 	"sync"
 
 	"github.com/google/go-github/v53/github"
 	"github.com/palantir/go-githubapp/githubapp"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/vitess.io/vitess-bot/go/git"
 )
 
 const (
@@ -133,7 +136,18 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 	return nil
 }
 
-func (h *PullRequestHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func panicHandler(logger zerolog.Logger) error {
+	if err := recover(); err != nil {
+		logger.Error().Msgf("%v\n%s\n", err, debug.Stack())
+		if err, ok := err.(error); ok {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *PullRequestHandler) addReviewChecklist(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -142,6 +156,11 @@ func (h *PullRequestHandler) addReviewChecklist(ctx context.Context, event githu
 	}
 
 	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
 
 	prComment := github.IssueComment{
 		Body: &h.reviewChecklist,
@@ -154,9 +173,14 @@ func (h *PullRequestHandler) addReviewChecklist(ctx context.Context, event githu
 	return nil
 }
 
-func (h *PullRequestHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) addLabels(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
 
 	for _, label := range prInfo.labels {
 		if strings.EqualFold(label, backport) || strings.EqualFold(label, forwardport) {
@@ -178,7 +202,7 @@ func (h *PullRequestHandler) addLabels(ctx context.Context, event github.PullReq
 	return nil
 }
 
-func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -187,6 +211,11 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 
 	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
 
 	if prInfo.repoName != "vitess" {
 		logger.Debug().Msgf("Pull Request %s/%s#%d is not on a vitess repo, skipping error generation", prInfo.repoOwner, prInfo.repoName, prInfo.num)
@@ -205,16 +234,27 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 	logger.Debug().Msgf("Change detect to 'go/vt/vterrors/code.go' in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 
+	vitess := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: "/tmp/vitess",
+	}
 	h.vitessRepoLock.Lock()
-	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(prInfo)
+	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(ctx, vitess, prInfo)
 	h.vitessRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 		return nil
 	}
 
+	website := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     "website",
+		LocalDir: "/tmp/website",
+	}
+
 	h.websiteRepoLock.Lock()
-	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(prInfo)
+	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(ctx, website, prInfo)
 	h.websiteRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
@@ -222,7 +262,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 
 	h.websiteRepoLock.Lock()
-	errorDocContent, docPath, err := generateErrorCodeDocumentation(ctx, client, prInfo, currentVersionDocs, vterrorsgenVitess)
+	errorDocContent, docPath, err := generateErrorCodeDocumentation(ctx, client, website, prInfo, currentVersionDocs, vterrorsgenVitess)
 	h.websiteRepoLock.Unlock()
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
@@ -240,7 +280,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	return nil
 }
 
-func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
 	installationID := githubapp.GetInstallationIDFromEvent(&event)
 
 	client, err := h.NewInstallationClient(installationID)
@@ -249,6 +289,11 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	}
 
 	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
 
 	pr, _, err := client.PullRequests.Get(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	if err != nil {
@@ -281,11 +326,16 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 		logger.Debug().Msgf("Will forwardport Pull Request %s/%s#%d to branches %v", prInfo.repoOwner, prInfo.repoName, prInfo.num, forwardportBranches)
 	}
 
+	vitessRepo := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: "/tmp/vitess",
+	}
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
 	for _, branch := range backportBranches {
 		h.vitessRepoLock.Lock()
-		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
+		newPRID, err := portPR(ctx, client, vitessRepo, prInfo, pr, mergedCommitSHA, branch, backport, otherLabels)
 		h.vitessRepoLock.Unlock()
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
@@ -295,7 +345,7 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	}
 	for _, branch := range forwardportBranches {
 		h.vitessRepoLock.Lock()
-		newPRID, err := portPR(ctx, client, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
+		newPRID, err := portPR(ctx, client, vitessRepo, prInfo, pr, mergedCommitSHA, branch, forwardport, otherLabels)
 		h.vitessRepoLock.Unlock()
 		if err != nil {
 			logger.Err(err).Msg(err.Error())
