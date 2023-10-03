@@ -383,7 +383,7 @@ func (h *PullRequestHandler) createDocsPreview(ctx context.Context, event github
 	// 	- vitessio/vitess:main
 	//	- vitessio/vitess:release-\d+\.\d+
 	// 2. PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
-	return nil
+	panic("implement me!")
 }
 
 func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
@@ -400,7 +400,7 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		}
 	}()
 
-	// Checks:
+	// TODO: Checks:
 	// - is vitessio/vitess:main branch OR is vitessio/vitess versioned tag (v\d+\.\d+\.\d+)
 	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
 	if prInfo.base.GetRef() != "main" {
