@@ -31,7 +31,7 @@ type Repo struct {
 }
 
 func (r *Repo) Add(ctx context.Context, arg ...string) error {
-	_, err := shell.NewContext(ctx, "git", append([]string{"add"}, arg...)...).Output()
+	_, err := shell.NewContext(ctx, "git", append([]string{"add"}, arg...)...).InDir(r.LocalDir).Output()
 	return err
 }
 
@@ -85,7 +85,7 @@ func (r *Repo) Commit(ctx context.Context, msg string, opts CommitOpts) error {
 		args = append(args, "--amend")
 	}
 
-	_, err := shell.NewContext(ctx, "git", args...).Output()
+	_, err := shell.NewContext(ctx, "git", args...).InDir(r.LocalDir).Output()
 	return err
 }
 
@@ -133,7 +133,7 @@ func (r *Repo) Push(ctx context.Context, opts PushOpts) error {
 		}
 	}
 
-	_, err := shell.NewContext(ctx, "git", args...).Output()
+	_, err := shell.NewContext(ctx, "git", args...).InDir(r.LocalDir).Output()
 	return err
 }
 
