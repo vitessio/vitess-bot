@@ -131,6 +131,10 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 			if err != nil {
 				return err
 			}
+			err = h.createDocsPreview(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
 			err = h.createErrorDocumentation(ctx, event, prInfo)
 			if err != nil {
 				return err
@@ -143,11 +147,19 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 			if err != nil {
 				return err
 			}
+			err = h.updateDocs(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
 		}
 	case "synchronize":
 		prInfo := getPRInformation(event)
 		if prInfo.repoName == "vitess" {
-			err := h.createErrorDocumentation(ctx, event, prInfo)
+			err := h.createDocsPreview(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
+			err = h.createErrorDocumentation(ctx, event, prInfo)
 			if err != nil {
 				return err
 			}
@@ -378,12 +390,12 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 }
 
 func (h *PullRequestHandler) createDocsPreview(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
-	// Checks:
+	// TODO: Checks:
 	// 1. Is a PR against either:
 	// 	- vitessio/vitess:main
 	//	- vitessio/vitess:release-\d+\.\d+
 	// 2. PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
-	panic("implement me!")
+	return nil
 }
 
 func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
