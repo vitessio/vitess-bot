@@ -49,7 +49,7 @@ func synchronizeCobraDocs(
 		return nil, errors.Wrapf(err, "Failed to create git ref %s ref for repository %s/%s to %s on Pull Request %d", newBranch, website.Owner, website.Name, op, prInfo.num)
 	}
 
-	if err := setupRepo(ctx, vitess, prInfo, op); err != nil {
+	if err := setupRepo(ctx, vitess, fmt.Sprintf("%s on Pull Request %d", op, prInfo.num)); err != nil {
 		return nil, err
 	}
 
@@ -57,7 +57,7 @@ func synchronizeCobraDocs(
 		return nil, errors.Wrapf(err, "Failed to fetch tags in repository %s/%s to %s on Pull Request %d", vitess.Owner, vitess.Name, op, prInfo.num)
 	}
 
-	if err := setupRepo(ctx, website, prInfo, op); err != nil {
+	if err := setupRepo(ctx, website, fmt.Sprintf("%s on Pull Request %d", op, prInfo.num)); err != nil {
 		return nil, err
 	}
 
@@ -103,21 +103,21 @@ func synchronizeCobraDocs(
 
 }
 
-func setupRepo(ctx context.Context, repo *git.Repo, prInfo prInformation, op string) error {
+func setupRepo(ctx context.Context, repo *git.Repo, op string) error {
 	if err := repo.Clone(ctx); err != nil {
-		return errors.Wrapf(err, "Failed to clone repository %s/%s to %s on Pull Request %d", repo.Owner, repo.Name, op, prInfo.num)
+		return errors.Wrapf(err, "Failed to clone repository %s/%s to %s", repo.Owner, repo.Name, op)
 	}
 
 	if err := repo.Clean(ctx); err != nil {
-		return errors.Wrapf(err, "Failed to clean the repository %s/%s to %s on Pull Request %d", repo.Owner, repo.Name, op, prInfo.num)
+		return errors.Wrapf(err, "Failed to clean the repository %s/%s to %s", repo.Owner, repo.Name, op)
 	}
 
 	if err := repo.Fetch(ctx, "origin"); err != nil {
-		return errors.Wrapf(err, "Failed to fetch origin on repository %s/%s to %s on Pull Request %d", repo.Owner, repo.Name, op, prInfo.num)
+		return errors.Wrapf(err, "Failed to fetch origin on repository %s/%s to %s", repo.Owner, repo.Name, op)
 	}
 
 	if err := repo.ResetHard(ctx, "HEAD"); err != nil {
-		return errors.Wrapf(err, "Failed to reset the repository %s/%s to %s on Pull Request %d", repo.Owner, repo.Name, op, prInfo.num)
+		return errors.Wrapf(err, "Failed to reset the repository %s/%s to %s", repo.Owner, repo.Name, op)
 	}
 
 	return nil
