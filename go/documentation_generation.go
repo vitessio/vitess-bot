@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/go-github/v53/github"
@@ -76,7 +77,7 @@ func cloneVitessAndGenerateErrors(ctx context.Context, vitess *git.Repo, prInfo 
 		return "", errors.Wrapf(err, "Failed to checkout on Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
 
-	vterrorsgenVitessBytes, err := shell.NewContext(ctx, "go", "run", "./go/vt/vterrors/vterrorsgen").InDir("/tmp/vitess").Output()
+	vterrorsgenVitessBytes, err := shell.NewContext(ctx, "go", "run", "./go/vt/vterrors/vterrorsgen").InDir(vitess.LocalDir).Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to run ./go/vt/vterrors/vterrorsgen on Pull Request %s/%s#%d to generate error code", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	}
@@ -96,12 +97,12 @@ func cloneWebsiteAndGetCurrentVersionOfDocs(ctx context.Context, website *git.Re
 		return "", errors.Wrapf(err, "Failed to pull vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	_, err := shell.NewContext(ctx, "cp", "./tools/get_release_from_docs.sh", "/tmp/website").Output()
+	_, err := shell.NewContext(ctx, "cp", "./tools/get_release_from_docs.sh", website.LocalDir).Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to copy ./tools/get_release_from_docs.sh to local clone of website repo to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	currentVersionDocsBytes, err := shell.New("./get_release_from_docs.sh").InDir("/tmp/website").Output()
+	currentVersionDocsBytes, err := shell.New("./get_release_from_docs.sh").InDir(website.LocalDir).Output()
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed to get current documentation version from config.toml in vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
@@ -128,8 +129,8 @@ func generateErrorCodeDocumentation(
 		currentVersionDocs = strings.Split(base.GetRef(), "-")[1]
 	}
 
-	docPath := "/tmp/website/content/en/docs/" + currentVersionDocs + "/reference/errors/query-serving.md"
-	queryServingErrorsBytes, err := shell.NewContext(ctx, "cat", docPath).InDir("/tmp/website").Output()
+	docPath := filepath.Join(website.LocalDir, "content", "en", "docs", currentVersionDocs, "reference", "errors", "query-serving.md")
+	queryServingErrorsBytes, err := shell.NewContext(ctx, "cat", docPath).InDir(website.LocalDir).Output()
 	if err != nil {
 		return "", "", errors.Wrapf(err, "Failed to cat the query serving error file (%s) to generate error code for Pull Request %d", docPath, prInfo.num)
 	}
@@ -161,6 +162,7 @@ func generateErrorCodeDocumentation(
 
 func createCommitAndPullRequestForErrorCode(
 	ctx context.Context,
+	website *git.Repo,
 	prInfo prInformation,
 	client *github.Client,
 	errorDocContent, docPath string,
@@ -215,7 +217,7 @@ func createCommitAndPullRequestForErrorCode(
 	tree := &github.Tree{
 		Entries: []*github.TreeEntry{
 			{
-				Path:    github.String(strings.TrimPrefix(docPath, "/tmp/website/")),
+				Path:    github.String(strings.TrimPrefix(docPath, website.LocalDir+"/")),
 				Mode:    github.String("100644"),
 				Type:    github.String("blob"),
 				Content: github.String(errorDocContent),

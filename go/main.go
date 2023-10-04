@@ -62,9 +62,9 @@ func main() {
 		panic(err)
 	}
 
-	prCommentHandler := &PullRequestHandler{
-		ClientCreator:   cc,
-		reviewChecklist: cfg.reviewChecklist,
+	prCommentHandler, err := NewPullRequestHandler(cc, cfg.reviewChecklist)
+	if err != nil {
+		panic(err)
 	}
 
 	webhookHandler := githubapp.NewEventDispatcher(

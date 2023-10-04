@@ -19,6 +19,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -56,6 +58,16 @@ type PullRequestHandler struct {
 	websiteRepoLock sync.Mutex
 }
 
+func NewPullRequestHandler(cc githubapp.ClientCreator, reviewChecklist string) (h *PullRequestHandler, err error) {
+	h = &PullRequestHandler{
+		ClientCreator:   cc,
+		reviewChecklist: reviewChecklist,
+	}
+	err = os.MkdirAll(h.Workdir(), 0777|os.ModeDir)
+
+	return h, err
+}
+
 type prInformation struct {
 	repo      *github.Repository
 	num       int
@@ -87,6 +99,10 @@ func getPRInformation(event github.PullRequestEvent) prInformation {
 		merged:    merged,
 		labels:    labels,
 	}
+}
+
+func (h *PullRequestHandler) Workdir() string {
+	return filepath.Join("/", "tmp", "pull_request_handler")
 }
 
 func (h *PullRequestHandler) Handles() []string {
@@ -237,7 +253,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	vitess := &git.Repo{
 		Owner:    prInfo.repoOwner,
 		Name:     prInfo.repoName,
-		LocalDir: "/tmp/vitess",
+		LocalDir: filepath.Join(h.Workdir(), "vitess"),
 	}
 	h.vitessRepoLock.Lock()
 	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(ctx, vitess, prInfo)
@@ -250,7 +266,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	website := &git.Repo{
 		Owner:    prInfo.repoOwner,
 		Name:     "website",
-		LocalDir: "/tmp/website",
+		LocalDir: filepath.Join(h.Workdir(), "website"),
 	}
 
 	h.websiteRepoLock.Lock()
@@ -273,7 +289,7 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 		return nil
 	}
 
-	err = createCommitAndPullRequestForErrorCode(ctx, prInfo, client, errorDocContent, docPath)
+	err = createCommitAndPullRequestForErrorCode(ctx, website, prInfo, client, errorDocContent, docPath)
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 	}
@@ -329,7 +345,7 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	vitessRepo := &git.Repo{
 		Owner:    prInfo.repoOwner,
 		Name:     prInfo.repoName,
-		LocalDir: "/tmp/vitess",
+		LocalDir: filepath.Join(h.Workdir(), "vitess"),
 	}
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
