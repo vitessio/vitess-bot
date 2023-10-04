@@ -76,15 +76,8 @@ func cherryPickAndPortPR(
 
 	// Create a new branch from the release branch
 	newBranch := fmt.Sprintf("%s-%d-to-%s", portType, originalPR.GetNumber(), branch)
-	newRef := &github.Reference{
-		Ref: github.String("refs/heads/" + newBranch),
-		Object: &github.GitObject{
-			SHA: releaseRef.GetObject().SHA,
-		},
-	}
-
-	_, _, err = client.Git.CreateRef(ctx, originalPRInfo.repoOwner, originalPRInfo.repoName, newRef)
-	if err != nil && !strings.Contains(err.Error(), "already exists") {
+	_, err = repo.CreateBranch(ctx, client, releaseRef, newBranch)
+	if err != nil {
 		return nil, false, errors.Wrapf(err, "Failed to create git ref %s on repository %s/%s to backport Pull Request %d", newBranch, originalPRInfo.repoOwner, originalPRInfo.repoName, originalPRInfo.num)
 	}
 

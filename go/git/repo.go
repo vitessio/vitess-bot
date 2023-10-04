@@ -143,5 +143,5 @@ func (r *Repo) ResetHard(ctx context.Context, ref string) error {
 }
 
 func (r *Repo) Status(ctx context.Context, arg ...string) ([]byte, error) {
-	return shell.NewContext(ctx, "git", append([]string{"status"}, arg...)...).InDir("/tmp/website").Output()
+	return shell.NewContext(ctx, "git", append([]string{"status"}, arg...)...).InDir(r.LocalDir).Output()
 }
