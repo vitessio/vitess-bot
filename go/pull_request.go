@@ -423,12 +423,12 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 	vitess := &git.Repo{
 		Owner:    prInfo.repoOwner,
 		Name:     prInfo.repoName,
-		LocalDir: "/tmp/vitess",
+		LocalDir: filepath.Join(h.Workdir(), "vitess"),
 	}
 	website := &git.Repo{
 		Owner:    prInfo.repoOwner,
 		Name:     "website",
-		LocalDir: "/tmp/website",
+		LocalDir: filepath.Join(h.Workdir(), "website"),
 	}
 
 	_, err = synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
