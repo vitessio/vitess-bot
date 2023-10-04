@@ -75,6 +75,8 @@ type prInformation struct {
 	repoName  string
 	merged    bool
 	labels    []string
+	base      *github.PullRequestBranch
+	head      *github.PullRequestBranch
 }
 
 func getPRInformation(event github.PullRequestEvent) prInformation {
@@ -98,6 +100,8 @@ func getPRInformation(event github.PullRequestEvent) prInformation {
 		repoName:  repo.GetName(),
 		merged:    merged,
 		labels:    labels,
+		base:      event.GetPullRequest().GetBase(),
+		head:      event.GetPullRequest().GetHead(),
 	}
 }
 
@@ -371,4 +375,50 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	}
 
 	return nil
+}
+
+func (h *PullRequestHandler) createDocsPreview(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+	// Checks:
+	// 1. Is a PR against either:
+	// 	- vitessio/vitess:main
+	//	- vitessio/vitess:release-\d+\.\d+
+	// 2. PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
+	return nil
+}
+
+func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
+	installationID := githubapp.GetInstallationIDFromEvent(&event)
+	client, err := h.NewInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
+
+	// Checks:
+	// - is vitessio/vitess:main branch OR is vitessio/vitess versioned tag (v\d+\.\d+\.\d+)
+	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
+	if prInfo.base.GetRef() != "main" {
+		logger.Debug().Msgf("PR is merged to %s, not main, skipping website cobradocs sync", prInfo.base.GetRef())
+		return nil
+	}
+
+	vitess := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: "/tmp/vitess",
+	}
+	website := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     "website",
+		LocalDir: "/tmp/website",
+	}
+
+	_, err = synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
+	return err
 }
