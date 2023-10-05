@@ -67,8 +67,13 @@ func main() {
 		panic(err)
 	}
 
+	releaseHandler, err := NewReleaseHandler(cc)
+	if err != nil {
+		panic(err)
+	}
+
 	webhookHandler := githubapp.NewEventDispatcher(
-		[]githubapp.EventHandler{prCommentHandler},
+		[]githubapp.EventHandler{prCommentHandler, releaseHandler},
 		cfg.Github.App.WebhookSecret,
 		githubapp.WithScheduler(
 			githubapp.AsyncScheduler(),

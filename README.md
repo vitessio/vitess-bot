@@ -36,7 +36,7 @@ In order to test the bot locally you will need to create a new GitHub App in htt
 - In the `Webhook` section you will need to fill in the `Webhook URL`. You can get this value by running `lt --port 8080` locally, this will print the URL linked to your local environment. Use that URL in the field. You must add `/api/github/hook` after the URL printed by `lt`, to redirect the webhooks to the correct API path (i.e. `https://lazy-frogs-hear.loca.lt/api/github/hook`).
 - You also need to set a `Webhook secret` and save its value for later.
 - In the section `Permissions`, we need for repository permissions: `Contents` (Read & Write), `Issues` (Read & Write), `Metadata` (Read Only), `Pull requests` (Read & Write)
-- In the section `Subscribe to events` select: `Create`, `Issue comment`, `Issues`, `Pull request`, `Push`. Or any other permission depending on what you need for your local dev. 
+- In the section `Subscribe to events` select: `Create`, `Issue comment`, `Issues`, `Pull request`, `Push`, and `Release`. Or any other permission depending on what you need for your local dev. 
 - In the section `Where can this GitHub App be installed?`, select `Any account`.
 - Click on `Create GitHub App`.
 
