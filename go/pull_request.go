@@ -413,9 +413,9 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		}
 	}()
 
-	// TODO: Checks:
-	// - is vitessio/vitess:main branch OR is vitessio/vitess versioned tag (v\d+\.\d+\.\d+)
-	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
+	// Checks:
+	// - is vitessio/vitess:main branch
+	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt` (TODO)
 	if prInfo.base.GetRef() != "main" {
 		logger.Debug().Msgf("PR %d is merged to %s, not main, skipping website cobradocs sync", prInfo.num, prInfo.base.GetRef())
 		return nil
@@ -426,6 +426,17 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		Name:     prInfo.repoName,
 		LocalDir: filepath.Join(h.Workdir(), "vitess"),
 	}
+
+	docChanges, err := detectCobraDocChanges(ctx, vitess, client, prInfo)
+	if err != nil {
+		return err
+	}
+
+	if !docChanges {
+		logger.Debug().Msgf("No flags changes detected in Pull Request %s/%s#%d", vitess.Owner, vitess.Name, prInfo.num)
+		return nil
+	}
+
 	website := &git.Repo{
 		Owner:    prInfo.repoOwner,
 		Name:     "website",
@@ -434,4 +445,23 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 
 	_, err = synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
 	return err
+}
+
+func detectCobraDocChanges(ctx context.Context, vitess *git.Repo, client *github.Client, prInfo prInformation) (bool, error) {
+	files, err := vitess.ListPRFiles(ctx, client, prInfo.num)
+	if err != nil {
+		return false, err
+	}
+
+	for _, file := range files {
+		if strings.HasPrefix(file.GetFilename(), "go/cmd") && strings.HasSuffix(file.GetFilename(), ".go") {
+			return true, nil
+		}
+
+		if strings.HasPrefix(file.GetFilename(), "go/flags/endtoend/") && strings.HasSuffix(file.GetFilename(), ".txt") {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
