@@ -158,7 +158,6 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 
 	for _, pr := range prs {
 		if pr.GetUser().GetLogin() != h.botLogin {
-			zerolog.DefaultContextLogger.Debug().Msgf("found PR opened by %s", pr.GetUser().GetLogin())
 			continue
 		}
 
@@ -196,6 +195,11 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		return nil, err
 	}
 
+	// Checkout the new branch we created.
+	if err := website.Checkout(ctx, newBranch); err != nil {
+		return nil, errors.Wrapf(err, "Failed to checkout repository %s/%s to branch %s to %s for %s", website.Owner, website.Name, newBranch, op, version.String())
+	}
+
 	awk, err := shell.NewContext(ctx,
 		"awk",
 		"-F\"",
@@ -213,11 +217,6 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 	}
 
 	versionPairs = updateVersionPairs(versionPairs, version)
-
-	// Checkout the new branch we created.
-	if err := website.Checkout(ctx, newBranch); err != nil {
-		return nil, errors.Wrapf(err, "Failed to checkout repository %s/%s to branch %s to %s for %s", website.Owner, website.Name, newBranch, op, version.String())
-	}
 
 	// Update the Makefile and author a commit.
 	if err := replaceVersionPairs(ctx, website, versionPairs); err != nil {
@@ -258,7 +257,7 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 	newPR := &github.NewPullRequest{
 		Title:               github.String(fmt.Sprintf("[cobradocs] update released cobradocs with %s", version.String())),
 		Head:                github.String(newBranch),
-		Base:                github.String(branch),
+		Base:                github.String("prod"), // hard-coded since sometimes `branch` is a different base.
 		Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to update the released cobradocs with [%s](%s)", version.String(), releaseMeta.url)),
 		MaintainerCanModify: github.Bool(true),
 	}
