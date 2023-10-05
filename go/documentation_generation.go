@@ -33,24 +33,14 @@ import (
 const (
 	errorCodePrefixLabel = "<!-- start -->"
 	errorCodeSuffixLabel = "<!-- end -->"
-
-	rowsPerPage = 100
 )
 
-func detectErrorCodeChanges(ctx context.Context, prInfo prInformation, client *github.Client) (bool, error) {
-	var allFiles []*github.CommitFile
-	cont := true
-	for page := 1; cont; page++ {
-		files, _, err := client.PullRequests.ListFiles(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num, &github.ListOptions{PerPage: rowsPerPage})
-		if err != nil {
-			return false, errors.Wrapf(err, "Failed to list changed files in Pull Request %s/%s#%d - at page %d", prInfo.repoOwner, prInfo.repoName, prInfo.num, page)
-		}
-		allFiles = append(allFiles, files...)
-		if len(files) < rowsPerPage {
-			cont = false
-			break
-		}
+func detectErrorCodeChanges(ctx context.Context, vitess *git.Repo, prInfo prInformation, client *github.Client) (bool, error) {
+	allFiles, err := vitess.ListPRFiles(ctx, client, prInfo.num)
+	if err != nil {
+		return false, err
 	}
+
 	for _, file := range allFiles {
 		if file.GetFilename() == "go/vt/vterrors/code.go" {
 			return true, nil

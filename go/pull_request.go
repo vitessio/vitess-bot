@@ -75,6 +75,8 @@ type prInformation struct {
 	repoName  string
 	merged    bool
 	labels    []string
+	base      *github.PullRequestBranch
+	head      *github.PullRequestBranch
 }
 
 func getPRInformation(event github.PullRequestEvent) prInformation {
@@ -98,6 +100,8 @@ func getPRInformation(event github.PullRequestEvent) prInformation {
 		repoName:  repo.GetName(),
 		merged:    merged,
 		labels:    labels,
+		base:      event.GetPullRequest().GetBase(),
+		head:      event.GetPullRequest().GetHead(),
 	}
 }
 
@@ -127,6 +131,10 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 			if err != nil {
 				return err
 			}
+			err = h.createDocsPreview(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
 			err = h.createErrorDocumentation(ctx, event, prInfo)
 			if err != nil {
 				return err
@@ -139,11 +147,19 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 			if err != nil {
 				return err
 			}
+			err = h.updateDocs(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
 		}
 	case "synchronize":
 		prInfo := getPRInformation(event)
 		if prInfo.repoName == "vitess" {
-			err := h.createErrorDocumentation(ctx, event, prInfo)
+			err := h.createDocsPreview(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
+			err = h.createErrorDocumentation(ctx, event, prInfo)
 			if err != nil {
 				return err
 			}
@@ -238,8 +254,14 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 		return nil
 	}
 
+	vitess := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: filepath.Join(h.Workdir(), "vitess"),
+	}
+
 	logger.Debug().Msgf("Listing changed files in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
-	changeDetected, err := detectErrorCodeChanges(ctx, prInfo, client)
+	changeDetected, err := detectErrorCodeChanges(ctx, vitess, prInfo, client)
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 		return nil
@@ -250,11 +272,6 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 	logger.Debug().Msgf("Change detect to 'go/vt/vterrors/code.go' in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 
-	vitess := &git.Repo{
-		Owner:    prInfo.repoOwner,
-		Name:     prInfo.repoName,
-		LocalDir: filepath.Join(h.Workdir(), "vitess"),
-	}
 	h.vitessRepoLock.Lock()
 	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(ctx, vitess, prInfo)
 	h.vitessRepoLock.Unlock()
@@ -371,4 +388,50 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	}
 
 	return nil
+}
+
+func (h *PullRequestHandler) createDocsPreview(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
+	// TODO: Checks:
+	// 1. Is a PR against either:
+	// 	- vitessio/vitess:main
+	//	- vitessio/vitess:release-\d+\.\d+
+	// 2. PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
+	return nil
+}
+
+func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
+	installationID := githubapp.GetInstallationIDFromEvent(&event)
+	client, err := h.NewInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
+
+	// TODO: Checks:
+	// - is vitessio/vitess:main branch OR is vitessio/vitess versioned tag (v\d+\.\d+\.\d+)
+	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
+	if prInfo.base.GetRef() != "main" {
+		logger.Debug().Msgf("PR %d is merged to %s, not main, skipping website cobradocs sync", prInfo.num, prInfo.base.GetRef())
+		return nil
+	}
+
+	vitess := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: filepath.Join(h.Workdir(), "vitess"),
+	}
+	website := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     "website",
+		LocalDir: filepath.Join(h.Workdir(), "website"),
+	}
+
+	_, err = synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
+	return err
 }
