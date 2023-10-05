@@ -416,7 +416,7 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 	// - is vitessio/vitess:main branch OR is vitessio/vitess versioned tag (v\d+\.\d+\.\d+)
 	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
 	if prInfo.base.GetRef() != "main" {
-		logger.Debug().Msgf("PR is merged to %s, not main, skipping website cobradocs sync", prInfo.base.GetRef())
+		logger.Debug().Msgf("PR %d is merged to %s, not main, skipping website cobradocs sync", prInfo.num, prInfo.base.GetRef())
 		return nil
 	}
 
