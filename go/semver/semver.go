@@ -1,3 +1,19 @@
+/*
+Copyright 2023 The Vitess Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package semver
 
 import (
@@ -61,92 +77,4 @@ func (v Version) String() string {
 	}
 
 	return buf.String()
-}
-
-func (v Version) NextMajor() Version {
-	return Version{
-		Major:     v.Major + 1,
-		Minor:     0,
-		Patch:     0,
-		RCVersion: 0,
-	}
-}
-
-func (v Version) PrevMajor() Version {
-	if v.Major == 0 {
-		panic(fmt.Sprintf("cannot decrement major version of %s", v.String()))
-	}
-
-	return Version{
-		Major:     v.Major - 1,
-		Minor:     0,
-		Patch:     0,
-		RCVersion: 0,
-	}
-}
-
-func (v Version) NextMinor() Version {
-	return Version{
-		Major:     v.Major,
-		Minor:     v.Minor + 1,
-		Patch:     0,
-		RCVersion: 0,
-	}
-}
-
-func (v Version) PrevMinor() Version {
-	if v.Minor == 0 {
-		panic(fmt.Sprintf("cannot decrement minor version of %s", v.String()))
-	}
-
-	return Version{
-		Major:     v.Major,
-		Minor:     v.Minor - 1,
-		Patch:     0,
-		RCVersion: 0,
-	}
-}
-
-func (v Version) NextPatch() Version {
-	return Version{
-		Major:     v.Major,
-		Minor:     v.Minor,
-		Patch:     v.Patch + 1,
-		RCVersion: 0,
-	}
-}
-
-func (v Version) PrevPatch() Version {
-	if v.Patch == 0 {
-		panic(fmt.Sprintf("cannot decrement patch version of %s", v.String()))
-	}
-
-	return Version{
-		Major:     v.Major,
-		Minor:     v.Minor,
-		Patch:     v.Patch - 1,
-		RCVersion: 0,
-	}
-}
-
-func (v Version) NextRCVersion() Version {
-	return Version{
-		Major:     v.Major,
-		Minor:     v.Minor,
-		Patch:     v.Patch,
-		RCVersion: v.RCVersion + 1,
-	}
-}
-
-func (v Version) PrevRCVersion() Version {
-	if v.RCVersion == 0 {
-		panic(fmt.Sprintf("cannot decrement rc version of %s", v.String()))
-	}
-
-	return Version{
-		Major:     v.Major,
-		Minor:     v.Minor,
-		Patch:     v.Patch,
-		RCVersion: v.RCVersion - 1,
-	}
 }
