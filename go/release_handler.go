@@ -58,13 +58,15 @@ func getReleaseMetadata(event *github.ReleaseEvent) *releaseMetadata {
 
 type ReleaseHandler struct {
 	githubapp.ClientCreator
+	botLogin string
 
 	m sync.Mutex
 }
 
-func NewReleaseHandler(cc githubapp.ClientCreator) (h *ReleaseHandler, err error) {
+func NewReleaseHandler(cc githubapp.ClientCreator, botLogin string) (h *ReleaseHandler, err error) {
 	h = &ReleaseHandler{
 		ClientCreator: cc,
+		botLogin: botLogin,
 	}
 	err = os.MkdirAll(h.Workdir(), 0777|os.ModeDir)
 

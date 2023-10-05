@@ -67,7 +67,7 @@ func main() {
 		panic(err)
 	}
 
-	releaseHandler, err := NewReleaseHandler(cc)
+	releaseHandler, err := NewReleaseHandler(cc, cfg.botLogin)
 	if err != nil {
 		panic(err)
 	}
