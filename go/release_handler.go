@@ -79,7 +79,7 @@ func (h *ReleaseHandler) Handles() []string {
 	return []string{"release"}
 }
 
-func (h *ReleaseHandler) Handle(ctx context.Context, eventType, deliveryID string, payload []byte) error {
+func (h *ReleaseHandler) Handle(ctx context.Context, _, _ string, payload []byte) error {
 	var event github.ReleaseEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return errors.Wrap(err, "Failed to parse release event payload")
