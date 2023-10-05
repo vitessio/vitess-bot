@@ -9,6 +9,10 @@ It currently automates the following tasks:
   - The suffix following the labels `Backport to: ` or `Forwardport to:` must match the [git branch name](https://github.com/vitessio/vitess/branches/all?query=release-)
   - If there is conflict, the backport PR will be created as a draft and a comment will be added to ping the author of the original PR.
 - Automatic query serving error code documentation
+- Automatic cobra documentation generation for programs:
+  - If a PR is merged to `main`, a website PR is created automatically.
+  - If a PR is merged to another branch, nothing is done (yet!).
+  - When a release is published, a website PR to update the `COBRADOC_VERSION_PAIRS` and regenerate the docs is opened. If an existing sync PR is in-flight, the second PR will be based on that one, and they may be merged in either order.
 
 ## Installing the Bot
 You can install and configure the bot with the following commands:
