@@ -49,6 +49,7 @@ Now, create an `.env` file at the root. The file is formatted as follows:
 ```dotenv
 SERVER_ADDRESS=127.0.0.1
 REVIEW_CHECKLIST_PATH=./config/review_checklist.txt
+BOT_USER_LOGIN=vitess-bot[bot]
 PRIVATE_KEY_PATH=.data/<NAME_OF_YOUR_SSH_PRIVATE_KEY_FILE>
 GITHUB_APP_INTEGRATION_ID=<SIX_FIGURES_APP_ID>
 GITHUB_APP_WEBHOOK_SECRET=<SECRETS_YOU_CREATED_EARLIER>
@@ -56,5 +57,7 @@ GITHUB_V3_API_URL=https://api.github.com/
 ```
 
 Replace the placeholders with the proper values. You will be able to find `GITHUB_APP_INTEGRATION_ID` in the `General` page of your GitHub App under `App ID`.
+
+Note that the `BOT_USER_LOGIN` is the name you gave the App you created above, _plus_ the literal `[bot]` on the end.
 
 Once that is done, you should be able to run the program!
