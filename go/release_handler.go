@@ -29,6 +29,7 @@ import (
 	"github.com/google/go-github/v53/github"
 	"github.com/palantir/go-githubapp/githubapp"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/vitess.io/vitess-bot/go/git"
 	"github.com/vitess.io/vitess-bot/go/semver"
 	"github.com/vitess.io/vitess-bot/go/shell"
@@ -66,7 +67,7 @@ type ReleaseHandler struct {
 func NewReleaseHandler(cc githubapp.ClientCreator, botLogin string) (h *ReleaseHandler, err error) {
 	h = &ReleaseHandler{
 		ClientCreator: cc,
-		botLogin: botLogin,
+		botLogin:      botLogin,
 	}
 	err = os.MkdirAll(h.Workdir(), 0777|os.ModeDir)
 
@@ -140,16 +141,45 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		LocalDir: filepath.Join(h.Workdir(), "website"),
 	}
 
+	prs, err := website.ListPRs(ctx, client, github.PullRequestListOptions{
+		State:     "open",
+		Head:      "update-release-cobradocs-for-",
+		Base:      "prod",
+		Sort:      "created",
+		Direction: "desc",
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	branch := "prod"
+	baseRepo := website
 	op := "update release cobradocs"
 
-	websiteProdRef, _, err := client.Git.GetRef(ctx, website.Owner, website.Name, "heads/"+branch)
+	for _, pr := range prs {
+		if pr.GetUser().GetLogin() != h.botLogin {
+			zerolog.DefaultContextLogger.Debug().Msgf("found PR opened by %s", pr.GetUser().GetLogin())
+			continue
+		}
+
+		// Most recent PR created by the bot. Base a new PR off of it.
+		head := pr.GetHead()
+
+		branch = head.GetRef()
+		repo := head.GetRepo()
+		baseRepo = git.NewRepo(repo.GetOwner().GetLogin(), repo.GetName())
+
+		zerolog.DefaultContextLogger.Debug().Msgf("using existing PR #%d (%s/%s:%s)", pr.GetNumber(), baseRepo.Owner, baseRepo.Name, branch)
+		break
+	}
+
+	baseRef, _, err := client.Git.GetRef(ctx, baseRepo.Owner, baseRepo.Name, "heads/"+branch)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch prod ref for repository %s/%s to %s for %s", website.Owner, website.Name, op, version.String())
+		return nil, errors.Wrapf(err, "Failed to fetch %s ref for repository %s/%s to %s for %s", branch, baseRepo.Owner, baseRepo.Name, op, version.String())
 	}
 
 	newBranch := fmt.Sprintf("update-release-cobradocs-for-%s", version.String())
-	_, err = website.CreateBranch(ctx, client, websiteProdRef, newBranch)
+	_, err = website.CreateBranch(ctx, client, baseRef, newBranch)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to create git ref %s ref for repository %s/%s to %s for %s", newBranch, website.Owner, website.Name, op, version.String())
 	}
