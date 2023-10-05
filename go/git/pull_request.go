@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/google/go-github/v53/github"
+	"github.com/pkg/errors"
 )
 
 const rowsPerPage = 100
@@ -29,10 +30,11 @@ func (r *Repo) ListPRFiles(ctx context.Context, client *github.Client, pr int) (
 	cont := true
 	for page := 1; cont; page++ {
 		files, _, err := client.PullRequests.ListFiles(ctx, r.Owner, r.Name, pr, &github.ListOptions{
-			PerPage: rowsPerPage
+			Page:    page,
+			PerPage: rowsPerPage,
 		})
 		if err != nil {
-			return false, errors.Wrapf(err, "Failed to list changed files in Pull Request %s/%s#%d - at page %d", r.Owner, r.Name, page)
+			return nil, errors.Wrapf(err, "Failed to list changed files in Pull Request %s/%s#%d - at page %d", r.Owner, r.Name, pr, page)
 		}
 		allFiles = append(allFiles, files...)
 		if len(files) < rowsPerPage {
@@ -41,6 +43,5 @@ func (r *Repo) ListPRFiles(ctx context.Context, client *github.Client, pr int) (
 		}
 	}
 
-	return allFiles
+	return allFiles, nil
 }
-
