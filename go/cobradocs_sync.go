@@ -70,7 +70,6 @@ func synchronizeCobraDocs(
 	_, err = shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
 		fmt.Sprintf("VITESS_DIR=%s", vitess.LocalDir),
 		"COBRADOCS_SYNC_PERSIST=yes",
-		// `COBRADOC_VERSION_PAIRS="main:19.0"`, // here until rc becomes a real tag
 	).Output()
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to run cobradoc sync script in repository %s/%s to %s on Pull Request %d", website.Owner, website.Name, newBranch, prInfo.num)
