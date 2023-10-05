@@ -254,8 +254,14 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 		return nil
 	}
 
+	vitess := &git.Repo{
+		Owner:    prInfo.repoOwner,
+		Name:     prInfo.repoName,
+		LocalDir: filepath.Join(h.Workdir(), "vitess"),
+	}
+
 	logger.Debug().Msgf("Listing changed files in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
-	changeDetected, err := detectErrorCodeChanges(ctx, prInfo, client)
+	changeDetected, err := detectErrorCodeChanges(ctx, vitess, prInfo, client)
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 		return nil
@@ -266,11 +272,6 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	}
 	logger.Debug().Msgf("Change detect to 'go/vt/vterrors/code.go' in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 
-	vitess := &git.Repo{
-		Owner:    prInfo.repoOwner,
-		Name:     prInfo.repoName,
-		LocalDir: filepath.Join(h.Workdir(), "vitess"),
-	}
 	h.vitessRepoLock.Lock()
 	vterrorsgenVitess, err := cloneVitessAndGenerateErrors(ctx, vitess, prInfo)
 	h.vitessRepoLock.Unlock()
