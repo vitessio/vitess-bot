@@ -130,16 +130,14 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 	releaseMeta *releaseMetadata,
 	version semver.Version,
 ) (*github.PullRequest, error) {
-	vitess := &git.Repo{
-		Owner:    releaseMeta.repoOwner,
-		Name:     "vitess",
-		LocalDir: filepath.Join(h.Workdir(), "vitess"),
-	}
-	website := &git.Repo{
-		Owner:    releaseMeta.repoOwner,
-		Name:     "website",
-		LocalDir: filepath.Join(h.Workdir(), "website"),
-	}
+	vitess := git.NewRepo(
+		releaseMeta.repoOwner,
+		"vitess",
+	).WithLocalDir(filepath.Join(h.Workdir(), "vitess"))
+	website := git.NewRepo(
+		releaseMeta.repoOwner,
+		"website",
+	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
 
 	prs, err := website.ListPRs(ctx, client, github.PullRequestListOptions{
 		State:     "open",
