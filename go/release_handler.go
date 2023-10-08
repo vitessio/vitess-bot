@@ -240,7 +240,14 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		return nil, errors.Wrapf(err, "Failed to run cobradoc sync script in repository %s/%s to %s for %s", website.Owner, website.Name, op, version.String())
 	}
 
-	// TODO: do we need to amend the commit to change the author to the bot?
+	// Amend the commit to change the author to the bot, and change the message
+	// to something more appropriate.
+	if err := website.Commit(ctx, fmt.Sprintf("Update released cobradocs with %s", releaseMeta.url), git.CommitOpts{
+		Author: botCommitAuthor,
+		Amend:  true,
+	}); err != nil {
+		return nil, errors.Wrapf(err, "Failed to amend commit author to %s for %s", op, version.String())
+	}
 
 	// Push the branch
 	if err := website.Push(ctx, git.PushOpts{

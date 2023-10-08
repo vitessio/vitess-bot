@@ -75,7 +75,14 @@ func synchronizeCobraDocs(
 		return nil, errors.Wrapf(err, "Failed to run cobradoc sync script in repository %s/%s to %s on Pull Request %d", website.Owner, website.Name, newBranch, prInfo.num)
 	}
 
-	// TODO: do we need to amend the commit to change the author to the bot?
+	// Amend the commit to change the author to the bot.
+	if err := website.Commit(ctx, "", git.CommitOpts{
+		Author: botCommitAuthor,
+		Amend:  true,
+		NoEdit: true,
+	}); err != nil {
+		return nil, errors.Wrapf(err, "Failed to amend commit author to %s on Pull Request %d", op, prInfo.num)
+	}
 
 	// Push the branch
 	if err := website.Push(ctx, git.PushOpts{
