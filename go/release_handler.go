@@ -150,8 +150,9 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		return nil, err
 	}
 
+	logger := zerolog.Ctx(ctx)
 	branch := "prod"
-	baseRepo := website
+	newBranch := fmt.Sprintf("update-release-cobradocs-for-%s", version.String())
 	op := "update release cobradocs"
 
 	for _, pr := range prs {
@@ -164,21 +165,13 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 
 		branch = head.GetRef()
 		repo := head.GetRepo()
-		baseRepo = git.NewRepo(repo.GetOwner().GetLogin(), repo.GetName())
 
-		zerolog.DefaultContextLogger.Debug().Msgf("using existing PR #%d (%s/%s:%s)", pr.GetNumber(), baseRepo.Owner, baseRepo.Name, branch)
+		logger.Debug().Msgf("using existing PR #%d (%s/%s:%s)", pr.GetNumber(), repo.GetOwner(), repo.GetName(), branch)
 		break
 	}
 
-	baseRef, _, err := client.Git.GetRef(ctx, baseRepo.Owner, baseRepo.Name, "heads/"+branch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch %s ref for repository %s/%s to %s for %s", branch, baseRepo.Owner, baseRepo.Name, op, version.String())
-	}
-
-	newBranch := fmt.Sprintf("update-release-cobradocs-for-%s", version.String())
-	_, err = website.CreateBranch(ctx, client, baseRef, newBranch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create git ref %s for repository %s/%s to %s for %s", newBranch, website.Owner, website.Name, op, version.String())
+	if err := createAndCheckoutBranch(ctx, client, website, branch, newBranch, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
+		return nil, err
 	}
 
 	if err := setupRepo(ctx, vitess, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
@@ -187,15 +180,6 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 
 	if err := vitess.FetchRef(ctx, "origin", "--tags"); err != nil {
 		return nil, errors.Wrapf(err, "Failed to fetch tags in repository %s/%s to %s for %s", vitess.Owner, vitess.Name, op, version.String())
-	}
-
-	if err := setupRepo(ctx, website, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
-		return nil, err
-	}
-
-	// Checkout the new branch we created.
-	if err := website.Checkout(ctx, newBranch); err != nil {
-		return nil, errors.Wrapf(err, "Failed to checkout repository %s/%s to branch %s to %s for %s", website.Owner, website.Name, newBranch, op, version.String())
 	}
 
 	awk, err := shell.NewContext(ctx,

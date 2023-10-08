@@ -467,23 +467,8 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	op := "generate cobradocs preview"
 	var openPR *github.PullRequest
 
-	baseRef, _, err := client.Git.GetRef(ctx, website.Owner, website.Name, "heads/"+branch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch %s ref for repository %s/%s to %s for %s", branch, website.Owner, website.Name, op, pr.GetHTMLURL())
-	}
-
-	_, err = website.CreateBranch(ctx, client, baseRef, headBranch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create git ref %s for repository %s/%s to %s for %s", headBranch, website.Owner, website.Name, op, pr.GetHTMLURL())
-	}
-
-	if err := setupRepo(ctx, website, fmt.Sprintf("%s for %s", op, pr.GetHTMLURL())); err != nil {
+	if err := createAndCheckoutBranch(ctx, client, website, branch, headBranch, fmt.Sprintf("%s for %s", op, pr.GetHTMLURL())); err != nil {
 		return nil, err
-	}
-
-	// Checkout the headBranch (new or existing).
-	if err := website.Checkout(ctx, headBranch); err != nil {
-		return nil, errors.Wrapf(err, "Failed to checkout %s to %s for %s", headBranch, op, pr.GetHTMLURL())
 	}
 
 	if docsVersion == "main" {
