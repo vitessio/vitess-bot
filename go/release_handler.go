@@ -178,7 +178,7 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 	newBranch := fmt.Sprintf("update-release-cobradocs-for-%s", version.String())
 	_, err = website.CreateBranch(ctx, client, baseRef, newBranch)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create git ref %s ref for repository %s/%s to %s for %s", newBranch, website.Owner, website.Name, op, version.String())
+		return nil, errors.Wrapf(err, "Failed to create git ref %s for repository %s/%s to %s for %s", newBranch, website.Owner, website.Name, op, version.String())
 	}
 
 	if err := setupRepo(ctx, vitess, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
