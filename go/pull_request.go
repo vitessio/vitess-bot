@@ -19,8 +19,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -30,6 +32,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/vitess.io/vitess-bot/go/git"
+	"github.com/vitess.io/vitess-bot/go/shell"
 )
 
 const (
@@ -38,6 +41,8 @@ const (
 
 	backport    = "backport"
 	forwardport = "forwardport"
+
+	doNotMergeLabel = "do-not-merge"
 )
 
 var (
@@ -389,13 +394,244 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 	return nil
 }
 
+var releaseBranchRegexp = regexp.MustCompile(`release-(\d+\.\d+)`)
+
 func (h *PullRequestHandler) createDocsPreview(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) error {
-	// TODO: Checks:
+	// Checks:
 	// 1. Is a PR against either:
 	// 	- vitessio/vitess:main
 	//	- vitessio/vitess:release-\d+\.\d+
 	// 2. PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt`
+	if prInfo.base.GetRef() == "main" {
+		return h.previewCobraDocs(ctx, event, "main", prInfo)
+	} else if m := releaseBranchRegexp.FindStringSubmatch(prInfo.base.GetRef()); m != nil {
+		return h.previewCobraDocs(ctx, event, m[1], prInfo)
+	}
+
 	return nil
+}
+
+func (h *PullRequestHandler) previewCobraDocs(ctx context.Context, event github.PullRequestEvent, docsVersion string, prInfo prInformation) error {
+	installationID := githubapp.GetInstallationIDFromEvent(&event)
+	client, err := h.NewInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
+
+	vitess := git.NewRepo(
+		prInfo.repoOwner,
+		prInfo.repoName,
+	).WithLocalDir(filepath.Join(h.Workdir(), "vitess"))
+
+	docChanges, err := detectCobraDocChanges(ctx, vitess, client, prInfo)
+	if err != nil {
+		return err
+	}
+
+	if !docChanges {
+		logger.Debug().Msgf("No flags changes detected in Pull Request %s/%s#%d", vitess.Owner, vitess.Name, prInfo.num)
+		return nil
+	}
+
+	website := git.NewRepo(
+		prInfo.repoOwner,
+		"website",
+	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
+
+	_, err = h.createCobraDocsPreviewPR(ctx, client, vitess, website, event.GetPullRequest(), docsVersion, prInfo)
+	return err
+}
+
+// TODO: there's a bit of duplicated code here with releaseHandler.updateReleasedCobraDocs
+func (h *PullRequestHandler) createCobraDocsPreviewPR(
+	ctx context.Context,
+	client *github.Client,
+	vitess *git.Repo,
+	website *git.Repo,
+	pr *github.PullRequest,
+	docsVersion string,
+	prInfo prInformation,
+) (*github.PullRequest, error) {
+	logger := zerolog.Ctx(ctx)
+	// 1. Find an existing PR and switch to its branch, or create a new branch
+	// based on `prod`.
+	branch := "prod"
+	headBranch := fmt.Sprintf("cobradocs-preview-for-%d", prInfo.num)
+	op := "generate cobradocs preview"
+	var openPR *github.PullRequest
+
+	baseRef, _, err := client.Git.GetRef(ctx, website.Owner, website.Name, "heads/"+branch)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to fetch %s ref for repository %s/%s to %s for %s", branch, website.Owner, website.Name, op, pr.GetHTMLURL())
+	}
+
+	_, err = website.CreateBranch(ctx, client, baseRef, headBranch)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to create git ref %s for repository %s/%s to %s for %s", headBranch, website.Owner, website.Name, op, pr.GetHTMLURL())
+	}
+
+	if err := setupRepo(ctx, website, fmt.Sprintf("%s for %s", op, pr.GetHTMLURL())); err != nil {
+		return nil, err
+	}
+
+	// Checkout the headBranch (new or existing).
+	if err := website.Checkout(ctx, headBranch); err != nil {
+		return nil, errors.Wrapf(err, "Failed to checkout %s to %s for %s", headBranch, op, pr.GetHTMLURL())
+	}
+
+	if docsVersion == "main" {
+		// We need to replace "main" with whatever the highest version under
+		// content/en/docs is.
+		find, err := shell.NewContext(ctx,
+			"find",
+			"-sE",
+			"content/en/docs",
+			"-type", "d",
+			"-depth", "1",
+			"-regex", `.*/[0-9]+.[0-9]+`,
+		).InDir(website.LocalDir).Output()
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to `find` latest docs version to %s for %s", op, pr.GetHTMLURL())
+		}
+
+		lines := strings.Split(string(find), "\n")
+		if len(lines) == 0 {
+			return nil, errors.Errorf("Failed to `find` any doc versions: found %s", string(find))
+		}
+
+		if lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+
+		docsVersion = filepath.Base(lines[len(lines)-1])
+		logger.Debug().Msgf("Found latest version of docs to be %s", docsVersion)
+	}
+
+	prs, err := website.ListPRs(ctx, client, github.PullRequestListOptions{
+		State:     "open",
+		Head:      fmt.Sprintf("%s:%s", website.Owner, headBranch),
+		Base:      branch,
+		Sort:      "created",
+		Direction: "desc",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, p := range prs {
+		if p.GetUser().GetLogin() != h.botLogin {
+			continue
+		}
+
+		openPR = p
+
+		baseRepo := openPR.GetBase().GetRepo()
+		logger.Debug().Msgf("Using existing PR #%d (%s/%s:%s)", p.GetNumber(), baseRepo.GetOwner().GetLogin(), baseRepo.GetName(), headBranch)
+		break
+	}
+
+	// 1a. If branch already existed, hard reset to `prod`.
+	if openPR != nil {
+		if err := website.ResetHard(ctx, branch); err != nil {
+			return nil, errors.Wrapf(err, "Failed to reset %s to %s to %s for %s", headBranch, branch, op, pr.GetHTMLURL())
+		}
+	}
+	// 2. Clone vitess and switch to the PR's base ref.
+	if err := setupRepo(ctx, vitess, fmt.Sprintf("%s for %s", op, pr.GetHTMLURL())); err != nil {
+		return nil, err
+	}
+
+	remote := pr.GetBase().GetRepo().GetCloneURL()
+	ref := pr.GetBase().GetRef()
+	if err := vitess.FetchRef(ctx, remote, ref); err != nil {
+		return nil, errors.Wrapf(err, "Failed to fetch %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+	}
+
+	if err := vitess.Checkout(ctx, "FETCH_HEAD"); err != nil {
+		return nil, errors.Wrapf(err, "Failed to checkout %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+	}
+
+	// 3. Run the sync script with `COBRADOC_VERSION_PAIRS="$(baseref):$(docsVersion)`.
+	_, err = shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
+		fmt.Sprintf("VITESS_DIR=%s", vitess.LocalDir),
+		"COBRADOCS_SYNC_PERSIST=yes",
+		fmt.Sprintf("COBRADOC_VERSION_PAIRS=HEAD:%s", docsVersion),
+	).Output()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+	}
+
+	// TODO: do we need to amend the commit to change the author to the bot?
+
+	// 4. Switch vitess repo to the PR's head ref.
+	ref = pr.GetHead().GetRef()
+	if err := vitess.Checkout(ctx, ref); err != nil {
+		return nil, errors.Wrapf(err, "Failed to checkout %s in %s/%s to %s for %s", ref, vitess.Owner, vitess.Name, op, pr.GetHTMLURL())
+	}
+
+	if err := vitess.Pull(ctx); err != nil {
+		return nil, errors.Wrapf(err, "Failed to pull %s/%s:%s to %s for %s", vitess.Owner, vitess.Name, ref, op, pr.GetHTMLURL())
+	}
+
+	// 5. Run the sync script again with `COBRADOC_VERSION_PAIRS=$(headref):$(docsVersion)`.
+	_, err = shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
+		fmt.Sprintf("VITESS_DIR=%s", vitess.LocalDir),
+		"COBRADOCS_SYNC_PERSIST=yes",
+		fmt.Sprintf("COBRADOC_VERSION_PAIRS=HEAD:%s", docsVersion),
+	).Output()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s/%s:%s to %s for %s", vitess.Owner, vitess.Name, ref, op, pr.GetHTMLURL())
+	}
+
+	// TODO: do we need to amend the commit to change the author to the bot?
+
+	// 6. Force push.
+	if err := website.Push(ctx, git.PushOpts{
+		Remote: "origin",
+		Refs:   []string{headBranch},
+		Force:  true,
+	}); err != nil {
+		return nil, errors.Wrapf(err, "Failed to push %s to %s for %s", headBranch, op, pr.GetHTMLURL())
+	}
+
+	switch openPR {
+	case nil:
+		// 7. Create PR with clear instructions that this is for preview purposes only
+		// and must not be merged.
+		newPR := &github.NewPullRequest{
+			Title:               github.String(fmt.Sprintf("[DO NOT MERGE] [cobradocs] preview cobradocs changes for %s/%s:%s", vitess.Owner, vitess.Name, ref)),
+			Head:                github.String(headBranch),
+			Base:                github.String(branch),
+			Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to update the released cobradocs with [%s/%s:%s](%s)", vitess.Owner, vitess.Name, ref, pr.GetHTMLURL())),
+			MaintainerCanModify: github.Bool(true),
+		}
+		openPR, _, err = client.PullRequests.Create(ctx, website.Owner, website.Name, newPR)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create Pull Request using branch %s on %s/%s", headBranch, website.Owner, website.Name)
+		}
+	default:
+		// 7a. In case of branch/PR already existing, add a comment saying that the
+		// vitess PR was updated so we force pushed to re-sync the preview changes.
+		if _, _, err := client.Issues.CreateComment(ctx, website.Owner, website.Name, openPR.GetNumber(), &github.IssueComment{
+			Body: github.String(fmt.Sprintf("This preview-only PR was force-pushed to resync changes in vitess PR %s", pr.GetHTMLURL())),
+		}); err != nil {
+			return nil, errors.Wrapf(err, "Failed to add PR comment on %s", openPR.GetHTMLURL())
+		}
+	}
+
+	// 8. In either case, make sure a do-not-merge label is on the website PR.
+	if _, _, err = client.Issues.AddLabelsToIssue(ctx, website.Owner, website.Name, openPR.GetNumber(), []string{doNotMergeLabel}); err != nil {
+		return nil, errors.Wrapf(err, "Failed to add %s label to %s", doNotMergeLabel, openPR.GetHTMLURL())
+	}
+
+	return openPR, nil
 }
 
 func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
