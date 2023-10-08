@@ -52,15 +52,17 @@ var (
 type PullRequestHandler struct {
 	githubapp.ClientCreator
 
+	botLogin        string
 	reviewChecklist string
 
 	vitessRepoLock  sync.Mutex
 	websiteRepoLock sync.Mutex
 }
 
-func NewPullRequestHandler(cc githubapp.ClientCreator, reviewChecklist string) (h *PullRequestHandler, err error) {
+func NewPullRequestHandler(cc githubapp.ClientCreator, reviewChecklist, botLogin string) (h *PullRequestHandler, err error) {
 	h = &PullRequestHandler{
 		ClientCreator:   cc,
+		botLogin:        botLogin,
 		reviewChecklist: reviewChecklist,
 	}
 	err = os.MkdirAll(h.Workdir(), 0777|os.ModeDir)

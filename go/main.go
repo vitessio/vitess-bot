@@ -62,7 +62,7 @@ func main() {
 		panic(err)
 	}
 
-	prCommentHandler, err := NewPullRequestHandler(cc, cfg.reviewChecklist)
+	prCommentHandler, err := NewPullRequestHandler(cc, cfg.reviewChecklist, cfg.botLogin)
 	if err != nil {
 		panic(err)
 	}
