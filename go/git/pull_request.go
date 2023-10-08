@@ -25,6 +25,43 @@ import (
 
 const rowsPerPage = 100
 
+// FindPRs finds the first n PRs matching the function f.
+//
+// To return all PRs matching, f, set n = -1.
+func (r *Repo) FindPRs(ctx context.Context, client *github.Client, opts github.PullRequestListOptions, f func(*github.PullRequest) bool, n int) (pulls []*github.PullRequest, err error) {
+	for page, cont := 1, true; cont; page++ {
+		opts.ListOptions = github.ListOptions{
+			PerPage: rowsPerPage,
+			Page:    page,
+		}
+
+		prs, _, err := client.PullRequests.List(ctx, r.Owner, r.Name, &opts)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to list pull requests in %s/%s - at page %d", r.Owner, r.Name, page)
+		}
+
+		for _, pr := range prs {
+			if n >= 0 && len(pulls) == n {
+				break
+			}
+
+			if f(pr) {
+				pulls = append(pulls, pr)
+			}
+		}
+
+		if n >= 0 && len(pulls) == n {
+			cont = false
+		}
+
+		if len(prs) < rowsPerPage {
+			cont = false
+		}
+	}
+
+	return pulls, nil
+}
+
 func (r *Repo) ListPRs(ctx context.Context, client *github.Client, opts github.PullRequestListOptions) (pulls []*github.PullRequest, err error) {
 	cont := true
 	for page := 1; cont; page++ {

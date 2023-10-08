@@ -449,7 +449,6 @@ func (h *PullRequestHandler) previewCobraDocs(ctx context.Context, event github.
 	return err
 }
 
-// TODO: there's a bit of duplicated code here with releaseHandler.updateReleasedCobraDocs
 func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	ctx context.Context,
 	client *github.Client,
@@ -499,35 +498,30 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		logger.Debug().Msgf("Found latest version of docs to be %s", docsVersion)
 	}
 
-	prs, err := website.ListPRs(ctx, client, github.PullRequestListOptions{
+	prs, err := website.FindPRs(ctx, client, github.PullRequestListOptions{
 		State:     "open",
 		Head:      fmt.Sprintf("%s:%s", website.Owner, headBranch),
 		Base:      branch,
 		Sort:      "created",
 		Direction: "desc",
-	})
+	}, func(pr *github.PullRequest) bool {
+		return pr.GetUser().GetLogin() == h.botLogin
+	}, 1)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, p := range prs {
-		if p.GetUser().GetLogin() != h.botLogin {
-			continue
-		}
-
-		openPR = p
-
+	if len(prs) != 0 {
+		openPR = prs[0]
 		baseRepo := openPR.GetBase().GetRepo()
-		logger.Debug().Msgf("Using existing PR #%d (%s/%s:%s)", p.GetNumber(), baseRepo.GetOwner().GetLogin(), baseRepo.GetName(), headBranch)
-		break
-	}
+		logger.Debug().Msgf("Using existing PR #%d (%s/%s:%s)", openPR.GetNumber(), baseRepo.GetOwner().GetLogin(), baseRepo.GetName(), headBranch)
 
-	// 1a. If branch already existed, hard reset to `prod`.
-	if openPR != nil {
+		// 1a. If branch already existed, hard reset to `prod`.
 		if err := website.ResetHard(ctx, branch); err != nil {
 			return nil, errors.Wrapf(err, "Failed to reset %s to %s to %s for %s", headBranch, branch, op, pr.GetHTMLURL())
 		}
 	}
+
 	// 2. Clone vitess and switch to the PR's base ref.
 	if err := setupRepo(ctx, vitess, fmt.Sprintf("%s for %s", op, pr.GetHTMLURL())); err != nil {
 		return nil, err

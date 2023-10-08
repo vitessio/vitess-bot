@@ -123,7 +123,6 @@ func (h *ReleaseHandler) Handle(ctx context.Context, _, _ string, payload []byte
 	return nil
 }
 
-// TODO: refactor out shared code between here and synchronizeCobraDocs()
 func (h *ReleaseHandler) updateReleasedCobraDocs(
 	ctx context.Context,
 	client *github.Client,
@@ -139,35 +138,32 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		"website",
 	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
 
-	prs, err := website.ListPRs(ctx, client, github.PullRequestListOptions{
-		State:     "open",
-		Head:      "update-release-cobradocs-for-",
-		Base:      "prod",
-		Sort:      "created",
-		Direction: "desc",
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	logger := zerolog.Ctx(ctx)
 	branch := "prod"
 	newBranch := fmt.Sprintf("update-release-cobradocs-for-%s", version.String())
 	op := "update release cobradocs"
 
-	for _, pr := range prs {
-		if pr.GetUser().GetLogin() != h.botLogin {
-			continue
-		}
+	prs, err := website.FindPRs(ctx, client, github.PullRequestListOptions{
+		State:     "open",
+		Head:      "update-release-cobradocs-for-",
+		Base:      "prod",
+		Sort:      "created",
+		Direction: "desc",
+	}, func(pr *github.PullRequest) bool {
+		return pr.GetUser().GetLogin() == h.botLogin
+	}, 1)
+	if err != nil {
+		return nil, err
+	}
 
+	if len(prs) != 0 {
+		pr := prs[0]
 		// Most recent PR created by the bot. Base a new PR off of it.
 		head := pr.GetHead()
 
 		branch = head.GetRef()
 		repo := head.GetRepo()
-
 		logger.Debug().Msgf("using existing PR #%d (%s/%s:%s)", pr.GetNumber(), repo.GetOwner(), repo.GetName(), branch)
-		break
 	}
 
 	if err := createAndCheckoutBranch(ctx, client, website, branch, newBranch, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
