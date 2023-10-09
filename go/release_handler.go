@@ -182,6 +182,15 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		"awk",
 		"-F\"",
 		"-e",
+		// This is extracting the value of the COBRADOC_VERSION_PAIRS from the Makefile.
+		// The line we're after looks like this:
+		//	export COBRADOC_VERSION_PAIRS="<this is what we want>"
+		//
+		// It's functionally equivalent to
+		//	grep "COBRADOC_VERSION_PAIRS=" Makefile | \
+		//		cut -d= -f2 | \
+		//		sed 's/"//g'
+		// but runs in a single shell command without requiring piping.
 		`$0 ~ /COBRADOC_VERSION_PAIRS="?([^"])"?/ { printf $2 }`,
 		"Makefile",
 	).InDir(website.LocalDir).Output()
