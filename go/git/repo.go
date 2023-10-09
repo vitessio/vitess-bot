@@ -51,7 +51,7 @@ func (r *Repo) Clean(ctx context.Context) error {
 }
 
 func (r *Repo) Clone(ctx context.Context) error {
-	_, err := shell.NewContext(ctx, "git", "clone", fmt.Sprintf("https://github.com/%s/%s.git", r.Owner, r.Name), r.LocalDir).Output()
+	_, err := shell.NewContext(ctx, "git", "clone", fmt.Sprintf("git@github.com:%s/%s.git", r.Owner, r.Name), r.LocalDir).Output()
 	if err != nil && !strings.Contains(err.Error(), "already exists and is not an empty directory") {
 		return err
 	}
