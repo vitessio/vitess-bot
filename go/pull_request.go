@@ -254,11 +254,10 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 		return nil
 	}
 
-	vitess := &git.Repo{
-		Owner:    prInfo.repoOwner,
-		Name:     prInfo.repoName,
-		LocalDir: filepath.Join(h.Workdir(), "vitess"),
-	}
+	vitess := git.NewRepo(
+		prInfo.repoOwner,
+		prInfo.repoName,
+	).WithLocalDir(filepath.Join(h.Workdir(), "vitess"))
 
 	logger.Debug().Msgf("Listing changed files in Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
 	changeDetected, err := detectErrorCodeChanges(ctx, vitess, prInfo, client)
@@ -280,11 +279,10 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 		return nil
 	}
 
-	website := &git.Repo{
-		Owner:    prInfo.repoOwner,
-		Name:     "website",
-		LocalDir: filepath.Join(h.Workdir(), "website"),
-	}
+	website := git.NewRepo(
+		prInfo.repoOwner,
+		"website",
+	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
 
 	h.websiteRepoLock.Lock()
 	currentVersionDocs, err := cloneWebsiteAndGetCurrentVersionOfDocs(ctx, website, prInfo)
@@ -359,11 +357,10 @@ func (h *PullRequestHandler) backportPR(ctx context.Context, event github.PullRe
 		logger.Debug().Msgf("Will forwardport Pull Request %s/%s#%d to branches %v", prInfo.repoOwner, prInfo.repoName, prInfo.num, forwardportBranches)
 	}
 
-	vitessRepo := &git.Repo{
-		Owner:    prInfo.repoOwner,
-		Name:     prInfo.repoName,
-		LocalDir: filepath.Join(h.Workdir(), "vitess"),
-	}
+	vitessRepo := git.NewRepo(
+		prInfo.repoOwner,
+		prInfo.repoName,
+	).WithLocalDir(filepath.Join(h.Workdir(), "vitess"))
 	mergedCommitSHA := pr.GetMergeCommitSHA()
 
 	for _, branch := range backportBranches {
@@ -421,11 +418,10 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		return nil
 	}
 
-	vitess := &git.Repo{
-		Owner:    prInfo.repoOwner,
-		Name:     prInfo.repoName,
-		LocalDir: filepath.Join(h.Workdir(), "vitess"),
-	}
+	vitess := git.NewRepo(
+		prInfo.repoOwner,
+		prInfo.repoName,
+	).WithLocalDir(filepath.Join(h.Workdir(), "vitess"))
 
 	docChanges, err := detectCobraDocChanges(ctx, vitess, client, prInfo)
 	if err != nil {
@@ -437,11 +433,10 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		return nil
 	}
 
-	website := &git.Repo{
-		Owner:    prInfo.repoOwner,
-		Name:     "website",
-		LocalDir: filepath.Join(h.Workdir(), "website"),
-	}
+	website := git.NewRepo(
+		prInfo.repoOwner,
+		"website",
+	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
 
 	_, err = synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
 	return err

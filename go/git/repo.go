@@ -30,6 +30,18 @@ type Repo struct {
 	LocalDir string
 }
 
+func NewRepo(owner, name string) *Repo {
+	return &Repo{
+		Owner: owner,
+		Name:  name,
+	}
+}
+
+func (r *Repo) WithLocalDir(dir string) *Repo {
+	r.LocalDir = dir
+	return r
+}
+
 func (r *Repo) Add(ctx context.Context, arg ...string) error {
 	_, err := shell.NewContext(ctx, "git", append([]string{"add"}, arg...)...).InDir(r.LocalDir).Output()
 	return err

@@ -25,6 +25,28 @@ import (
 
 const rowsPerPage = 100
 
+func (r *Repo) ListPRs(ctx context.Context, client *github.Client, opts github.PullRequestListOptions) (pulls []*github.PullRequest, err error) {
+	cont := true
+	for page := 1; cont; page++ {
+		opts.ListOptions = github.ListOptions{
+			PerPage: rowsPerPage,
+			Page:    page,
+		}
+		prs, _, err := client.PullRequests.List(ctx, r.Owner, r.Name, &opts)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to list pull requests in %s/%s - at page %d", r.Owner, r.Name, page)
+		}
+
+		pulls = append(pulls, prs...)
+		if len(prs) < rowsPerPage {
+			cont = false
+			break
+		}
+	}
+
+	return pulls, nil
+}
+
 // ListPRFiles returns a list of all files included in a given PR in the repo.
 func (r *Repo) ListPRFiles(ctx context.Context, client *github.Client, pr int) (allFiles []*github.CommitFile, err error) {
 	cont := true

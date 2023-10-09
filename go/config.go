@@ -27,6 +27,7 @@ import (
 type config struct {
 	Github githubapp.Config
 
+	botLogin        string
 	reviewChecklist string
 	address         string
 	logFile         string
@@ -62,6 +63,8 @@ func readConfig() (*config, error) {
 		return nil, errors.Wrapf(err, "failed to read review checklist file: %s", pathReviewChecklist)
 	}
 	c.reviewChecklist = string(bytes)
+
+	c.botLogin = os.Getenv("BOT_USER_LOGIN")
 
 	// Get server address
 	serverAddress := os.Getenv("SERVER_ADDRESS")
