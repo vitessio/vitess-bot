@@ -123,7 +123,6 @@ func (h *ReleaseHandler) Handle(ctx context.Context, _, _ string, payload []byte
 	return nil
 }
 
-// TODO: refactor out shared code between here and synchronizeCobraDocs()
 func (h *ReleaseHandler) updateReleasedCobraDocs(
 	ctx context.Context,
 	client *github.Client,
@@ -139,46 +138,36 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		"website",
 	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
 
-	prs, err := website.ListPRs(ctx, client, github.PullRequestListOptions{
+	logger := zerolog.Ctx(ctx)
+	branch := "prod"
+	newBranch := fmt.Sprintf("update-release-cobradocs-for-%s", version.String())
+	op := "update release cobradocs"
+
+	prs, err := website.FindPRs(ctx, client, github.PullRequestListOptions{
 		State:     "open",
 		Head:      "update-release-cobradocs-for-",
 		Base:      "prod",
 		Sort:      "created",
 		Direction: "desc",
-	})
+	}, func(pr *github.PullRequest) bool {
+		return pr.GetUser().GetLogin() == h.botLogin
+	}, 1)
 	if err != nil {
 		return nil, err
 	}
 
-	branch := "prod"
-	baseRepo := website
-	op := "update release cobradocs"
-
-	for _, pr := range prs {
-		if pr.GetUser().GetLogin() != h.botLogin {
-			continue
-		}
-
+	if len(prs) != 0 {
+		pr := prs[0]
 		// Most recent PR created by the bot. Base a new PR off of it.
 		head := pr.GetHead()
 
 		branch = head.GetRef()
 		repo := head.GetRepo()
-		baseRepo = git.NewRepo(repo.GetOwner().GetLogin(), repo.GetName())
-
-		zerolog.DefaultContextLogger.Debug().Msgf("using existing PR #%d (%s/%s:%s)", pr.GetNumber(), baseRepo.Owner, baseRepo.Name, branch)
-		break
+		logger.Debug().Msgf("using existing PR #%d (%s/%s:%s)", pr.GetNumber(), repo.GetOwner(), repo.GetName(), branch)
 	}
 
-	baseRef, _, err := client.Git.GetRef(ctx, baseRepo.Owner, baseRepo.Name, "heads/"+branch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch %s ref for repository %s/%s to %s for %s", branch, baseRepo.Owner, baseRepo.Name, op, version.String())
-	}
-
-	newBranch := fmt.Sprintf("update-release-cobradocs-for-%s", version.String())
-	_, err = website.CreateBranch(ctx, client, baseRef, newBranch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create git ref %s for repository %s/%s to %s for %s", newBranch, website.Owner, website.Name, op, version.String())
+	if err := createAndCheckoutBranch(ctx, client, website, branch, newBranch, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
+		return nil, err
 	}
 
 	if err := setupRepo(ctx, vitess, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
@@ -189,19 +178,19 @@ func (h *ReleaseHandler) updateReleasedCobraDocs(
 		return nil, errors.Wrapf(err, "Failed to fetch tags in repository %s/%s to %s for %s", vitess.Owner, vitess.Name, op, version.String())
 	}
 
-	if err := setupRepo(ctx, website, fmt.Sprintf("%s for %s", op, version.String())); err != nil {
-		return nil, err
-	}
-
-	// Checkout the new branch we created.
-	if err := website.Checkout(ctx, newBranch); err != nil {
-		return nil, errors.Wrapf(err, "Failed to checkout repository %s/%s to branch %s to %s for %s", website.Owner, website.Name, newBranch, op, version.String())
-	}
-
 	awk, err := shell.NewContext(ctx,
 		"awk",
 		"-F\"",
 		"-e",
+		// This is extracting the value of the COBRADOC_VERSION_PAIRS from the Makefile.
+		// The line we're after looks like this:
+		//	export COBRADOC_VERSION_PAIRS="<this is what we want>"
+		//
+		// It's functionally equivalent to
+		//	grep "COBRADOC_VERSION_PAIRS=" Makefile | \
+		//		cut -d= -f2 | \
+		//		sed 's/"//g'
+		// but runs in a single shell command without requiring piping.
 		`$0 ~ /COBRADOC_VERSION_PAIRS="?([^"])"?/ { printf $2 }`,
 		"Makefile",
 	).InDir(website.LocalDir).Output()

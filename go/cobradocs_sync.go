@@ -37,16 +37,10 @@ func synchronizeCobraDocs(
 ) (*github.PullRequest, error) {
 	op := "update cobradocs"
 	branch := "prod"
-
-	websiteProdRef, _, err := client.Git.GetRef(ctx, website.Owner, website.Name, "heads/"+branch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch prod ref for repository %s/%s to %s on Pull Request %d", website.Owner, website.Name, op, prInfo.num)
-	}
-
 	newBranch := fmt.Sprintf("synchronize-cobradocs-for-%d", pr.GetNumber())
-	_, err = website.CreateBranch(ctx, client, websiteProdRef, newBranch)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create git ref %s ref for repository %s/%s to %s on Pull Request %d", newBranch, website.Owner, website.Name, op, prInfo.num)
+
+	if err := createAndCheckoutBranch(ctx, client, website, branch, newBranch, fmt.Sprintf("%s on Pull Request %d", op, pr.GetNumber())); err != nil {
+		return nil, err
 	}
 
 	if err := setupRepo(ctx, vitess, fmt.Sprintf("%s on Pull Request %d", op, prInfo.num)); err != nil {
@@ -57,21 +51,11 @@ func synchronizeCobraDocs(
 		return nil, errors.Wrapf(err, "Failed to fetch tags in repository %s/%s to %s on Pull Request %d", vitess.Owner, vitess.Name, op, prInfo.num)
 	}
 
-	if err := setupRepo(ctx, website, fmt.Sprintf("%s on Pull Request %d", op, prInfo.num)); err != nil {
-		return nil, err
-	}
-
-	// Checkout the new branch we created.
-	if err := website.Checkout(ctx, newBranch); err != nil {
-		return nil, errors.Wrapf(err, "Failed to checkout repository %s/%s to branch %s to %s on Pull Request %d", website.Owner, website.Name, newBranch, op, prInfo.num)
-	}
-
 	// Run the sync script (which authors the commit already).
-	_, err = shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
+	if _, err := shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
 		fmt.Sprintf("VITESS_DIR=%s", vitess.LocalDir),
 		"COBRADOCS_SYNC_PERSIST=yes",
-	).Output()
-	if err != nil {
+	).Output(); err != nil {
 		return nil, errors.Wrapf(err, "Failed to run cobradoc sync script in repository %s/%s to %s on Pull Request %d", website.Owner, website.Name, newBranch, prInfo.num)
 	}
 
@@ -108,6 +92,27 @@ func synchronizeCobraDocs(
 
 	return newPRCreated, nil
 
+}
+
+func createAndCheckoutBranch(ctx context.Context, client *github.Client, repo *git.Repo, baseBranch string, newBranch string, op string) error {
+	baseRef, _, err := client.Git.GetRef(ctx, repo.Owner, repo.Name, "heads/"+baseBranch)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to fetch %s ref for repository %s/%s to %s", baseBranch, repo.Owner, repo.Name, op)
+	}
+
+	if _, err := repo.CreateBranch(ctx, client, baseRef, newBranch); err != nil {
+		errors.Wrapf(err, "Failed to create git ref %s for repository %s/%s to %s", newBranch, repo.Owner, repo.Name, op)
+	}
+
+	if err = setupRepo(ctx, repo, op); err != nil {
+		return err
+	}
+
+	if err = repo.Checkout(ctx, newBranch); err != nil {
+		return errors.Wrapf(err, "Failed to checkout %s/%s to %s to %s", repo.Owner, repo.Name, newBranch, op)
+	}
+
+	return nil
 }
 
 func setupRepo(ctx context.Context, repo *git.Repo, op string) error {
