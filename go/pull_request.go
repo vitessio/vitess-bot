@@ -159,6 +159,14 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 				return err
 			}
 		}
+	case "labeled":
+		prInfo := getPRInformation(event)
+		if prInfo.repoName == "vitess" {
+			err := h.addArewefastyetComment(ctx, event, prInfo)
+			if err != nil {
+				return err
+			}
+		}
 	case "synchronize":
 		prInfo := getPRInformation(event)
 		if prInfo.repoName == "vitess" {
@@ -315,6 +323,68 @@ func (h *PullRequestHandler) createErrorDocumentation(ctx context.Context, event
 	if err != nil {
 		logger.Err(err).Msg(err.Error())
 	}
+	return nil
+}
+
+func (h *PullRequestHandler) addArewefastyetComment(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
+	if event.GetLabel().GetName() != "Benchmark me" {
+		return nil
+	}
+
+	installationID := githubapp.GetInstallationIDFromEvent(&event)
+
+	client, err := h.NewInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+
+	ctx, logger := githubapp.PreparePRContext(ctx, installationID, prInfo.repo, event.GetNumber())
+	defer func() {
+		if e := panicHandler(logger); e != nil {
+			err = e
+		}
+	}()
+
+	newComment := fmt.Sprintf("Hello! :wave:\n\nThis Pull Request is now handled by arewefastyet. The current HEAD and future commits will be benchmarked.\n\nYou can find the performance comparison on the [arewefastyet website](https://benchmark.vitess.io/pr/%d).", prInfo.num)
+
+	// use client to get comments
+	var allComments []*github.IssueComment
+	perPage := 100
+	for page := 1; true; page++ {
+		comments, _, err := client.Issues.ListComments(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num, &github.IssueListCommentsOptions{
+			ListOptions: github.ListOptions{
+				Page:    page,
+				PerPage: perPage,
+			},
+		})
+		if err != nil {
+			logger.Error().Err(err).Msgf("failed to get comments on Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+			return err
+		}
+		allComments = append(allComments, comments...)
+		if len(comments) < perPage {
+			break
+		}
+	}
+
+	// look through comments
+	for _, comment := range allComments {
+		body := comment.GetBody()
+		if strings.Contains(body, newComment) {
+			logger.Info().Msgf("arewefastyet comment already added to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+			return nil
+		}
+	}
+
+	prComment := github.IssueComment{
+		Body: &newComment,
+	}
+
+	logger.Debug().Msgf("Adding arewefastyet comment to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	if _, _, err := client.Issues.CreateComment(ctx, prInfo.repoOwner, prInfo.repoName, prInfo.num, &prComment); err != nil {
+		logger.Error().Err(err).Msgf("Failed to add arewefastyet comment to Pull Request %s/%s#%d", prInfo.repoOwner, prInfo.repoName, prInfo.num)
+	}
+
 	return nil
 }
 
