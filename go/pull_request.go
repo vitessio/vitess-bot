@@ -51,6 +51,7 @@ var (
 		"NeedsWebsiteDocsUpdate",
 		"NeedsDescriptionUpdate",
 		"NeedsIssue",
+		"NeedsBackportReason",
 	}
 )
 
