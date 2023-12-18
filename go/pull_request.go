@@ -514,7 +514,9 @@ func (h *PullRequestHandler) previewCobraDocs(ctx context.Context, event github.
 	website := git.NewRepo(
 		prInfo.repoOwner,
 		"website",
-	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
+	).WithDefaultBranch("prod").WithLocalDir(
+		filepath.Join(h.Workdir(), "website"),
+	)
 
 	_, err = h.createCobraDocsPreviewPR(ctx, client, vitess, website, event.GetPullRequest(), docsVersion, prInfo)
 	return err
