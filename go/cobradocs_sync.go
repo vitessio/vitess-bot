@@ -124,6 +124,10 @@ func setupRepo(ctx context.Context, repo *git.Repo, op string) error {
 		return errors.Wrapf(err, "Failed to clean the repository %s/%s to %s", repo.Owner, repo.Name, op)
 	}
 
+	if err := repo.Checkout(ctx, repo.DefaultBranch); err != nil {
+		return errors.Wrapf(err, "Failed to checkout %s in %s/%s to %s", repo.DefaultBranch, repo.Owner, repo.Name, op)
+	}
+
 	if err := repo.Fetch(ctx, "origin"); err != nil {
 		return errors.Wrapf(err, "Failed to fetch origin on repository %s/%s to %s", repo.Owner, repo.Name, op)
 	}

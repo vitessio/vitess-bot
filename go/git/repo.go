@@ -25,20 +25,27 @@ import (
 )
 
 type Repo struct {
-	Owner    string
-	Name     string
-	LocalDir string
+	Owner         string
+	Name          string
+	DefaultBranch string
+	LocalDir      string
 }
 
 func NewRepo(owner, name string) *Repo {
 	return &Repo{
-		Owner: owner,
-		Name:  name,
+		Owner:         owner,
+		Name:          name,
+		DefaultBranch: "main",
 	}
 }
 
 func (r *Repo) WithLocalDir(dir string) *Repo {
 	r.LocalDir = dir
+	return r
+}
+
+func (r *Repo) WithDefaultBranch(branch string) *Repo {
+	r.DefaultBranch = branch
 	return r
 }
 
