@@ -65,3 +65,22 @@ Replace the placeholders with the proper values. You will be able to find `GITHU
 Note that the `BOT_USER_LOGIN` is the name you gave the App you created above, _plus_ the literal `[bot]` on the end.
 
 Once that is done, you should be able to run the program!
+
+## Production deployment
+
+The bot is deployed on a remote machine using the GitHub Actions located in `.github/workflows/deploy.yml`.
+
+On every push to `main`, GitHub Action will run the workflow that will perform a set of commands over SSH on the production server.
+Below are all the shell commands executed:
+
+```shell
+cd $HOME/vitess-bot
+git reset --hard FETCH_HEAD
+git clean -fd
+git fetch origin main
+git checkout FETCH_HEAD
+killall -9 vitess-bot
+source ~/.profile
+go build -o vitess-bot ./go
+nohup ./vitess-bot &
+```
