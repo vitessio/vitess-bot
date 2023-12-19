@@ -19,7 +19,7 @@ jobs:
       - name: executing remote ssh commands using password
         uses: appleboy/ssh-action@master
         env:
-          SSH_OPTIONS: "-tt"
+          SSH_OPTIONS: "test"
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
