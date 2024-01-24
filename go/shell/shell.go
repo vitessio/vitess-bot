@@ -25,6 +25,11 @@ import (
 
 type cmd exec.Cmd
 
+var (
+	globalRegexpOpt string
+	regexpTypeOpt   []string
+)
+
 // New returns a new command can be run.
 func New(name string, arg ...string) *cmd {
 	return NewContext(context.Background(), name, arg...)
@@ -33,6 +38,21 @@ func New(name string, arg ...string) *cmd {
 // NewContext returns a new command that can be run with the given context.
 func NewContext(ctx context.Context, name string, arg ...string) *cmd {
 	return (*cmd)(exec.CommandContext(ctx, name, arg...))
+}
+
+// FindRegexpExtended returns a slice of arguments for doing a `find` command
+// using extended regular expressions in a cross-platform-friendly manner.
+func FindRegexpExtended(path string, expressions ...string) (args []string) {
+	args = []string{path}
+	if globalRegexpOpt != "" {
+		args = []string{globalRegexpOpt, path}
+	}
+
+	if len(regexpTypeOpt) > 0 {
+		args = append(args, regexpTypeOpt...)
+	}
+
+	return append(args, expressions...)
 }
 
 // InDir updates the working directory of the command and returns it.
