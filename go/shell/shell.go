@@ -43,9 +43,9 @@ func NewContext(ctx context.Context, name string, arg ...string) *cmd {
 // FindRegexpExtended returns a slice of arguments for doing a `find` command
 // using extended regular expressions in a cross-platform-friendly manner.
 func FindRegexpExtended(path string, expressions ...string) (args []string) {
-	args = []string{path}
+	args = []string{"find", path}
 	if globalRegexpOpt != "" {
-		args = []string{globalRegexpOpt, path}
+		args = []string{"find", globalRegexpOpt, path}
 	}
 
 	if len(regexpTypeOpt) > 0 {
