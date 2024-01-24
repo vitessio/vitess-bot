@@ -546,14 +546,21 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	if docsVersion == "main" {
 		// We need to replace "main" with whatever the highest version under
 		// content/en/docs is.
-		find, err := shell.NewContext(ctx,
-			"find",
-			"-sE",
-			"content/en/docs",
+		//
+		// MacOS does not support -regextype flag, but Unix (non-darwin) does
+		// not support the -E equivalent. Similarly, Unix does not support the
+		// lexicographic sort opt (-s), so we rely on sort's dictionary sort
+		// (-d) instead.
+		//
+		// Unix version: find content/en/docs -regextype posix-extended -maxdepth 1 -type d -regex ... | sort -d
+		// MacOS version: find -E content/en/docs -maxdepth 1 -type d -regex ... | sort -d
+		args := shell.FindRegexpExtended("content/en/docs",
+			"-maxdepth", "1",
 			"-type", "d",
-			"-depth", "1",
-			"-regex", `.*/[0-9]+.[0-9]+`,
-		).InDir(website.LocalDir).Output()
+			"-regex", `.*/[0-9]+.[0-9]+`, "|",
+			"sort", "-d",
+		)
+		find, err := shell.NewContext(ctx, "bash", "-c", strings.Join(args, " ")).InDir(website.LocalDir).Output()
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to `find` latest docs version to %s for %s", op, pr.GetHTMLURL())
 		}
