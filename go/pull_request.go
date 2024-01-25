@@ -609,8 +609,8 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 
 	remote := pr.GetBase().GetRepo().GetCloneURL()
 	ref := pr.GetBase().GetRef()
-	if err := vitess.FetchRef(ctx, remote, ref); err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+	if err := vitess.FetchRef(ctx, "origin", fmt.Sprintf("refs/pull/%d/head", pr.GetNumber())); err != nil {
+		return nil, errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to %s for %s", vitess.Owner, vitess.Name, pr.GetNumber(), op, pr.GetHTMLURL())
 	}
 
 	if err := vitess.Checkout(ctx, "FETCH_HEAD"); err != nil {
