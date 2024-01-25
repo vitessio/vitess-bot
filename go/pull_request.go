@@ -609,8 +609,8 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 
 	remote := pr.GetBase().GetRepo().GetCloneURL()
 	ref := pr.GetBase().GetRef()
-	if err := vitess.FetchRef(ctx, "origin", fmt.Sprintf("refs/pull/%d/head", pr.GetNumber())); err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to %s for %s", vitess.Owner, vitess.Name, pr.GetNumber(), op, pr.GetHTMLURL())
+	if err := vitess.FetchRef(ctx, remote, ref); err != nil {
+		return nil, errors.Wrapf(err, "Failed to fetch %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
 	}
 
 	if err := vitess.Checkout(ctx, "FETCH_HEAD"); err != nil {
@@ -636,13 +636,11 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	}
 
 	// 4. Switch vitess repo to the PR's head ref.
-	ref = pr.GetHead().GetRef()
-	if err := vitess.Checkout(ctx, ref); err != nil {
-		return nil, errors.Wrapf(err, "Failed to checkout %s in %s/%s to %s for %s", ref, vitess.Owner, vitess.Name, op, pr.GetHTMLURL())
+	if err := vitess.FetchRef(ctx, remote, fmt.Sprintf("refs/pull/%d/head", pr.GetNumber())); err != nil {
+		return nil, errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to %s for %s", vitess.Owner, vitess.Name, pr.GetNumber(), op, pr.GetHTMLURL())
 	}
-
-	if err := vitess.Pull(ctx); err != nil {
-		return nil, errors.Wrapf(err, "Failed to pull %s/%s:%s to %s for %s", vitess.Owner, vitess.Name, ref, op, pr.GetHTMLURL())
+	if err := vitess.Checkout(ctx, "FETCH_HEAD"); err != nil {
+		return nil, errors.Wrapf(err, "Failed to checkout %s in %s/%s to %s for %s", ref, vitess.Owner, vitess.Name, op, pr.GetHTMLURL())
 	}
 
 	// 5. Run the sync script again with `COBRADOC_VERSION_PAIRS=$(headref):$(docsVersion)`.
