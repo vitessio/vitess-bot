@@ -549,10 +549,6 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	op := "generate cobradocs preview"
 	var openPR *github.PullRequest
 
-	if err := website.FetchRef(ctx, "origin", branch); err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch origin/%s in %s/%s to %s for %s", branch, website.Owner, website.Name, op, pr.GetHTMLURL())
-	}
-
 	if err := createAndCheckoutBranch(ctx, client, website, branch, headBranch, fmt.Sprintf("%s for %s", op, pr.GetHTMLURL())); err != nil {
 		return nil, err
 	}
