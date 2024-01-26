@@ -781,9 +781,11 @@ func (h *PullRequestHandler) writeAndCommitTree(
 			return nil, nil, errors.Wrapf(err, "Failed to parse diff-tree entry to %s for %s", op, pr.GetHTMLURL())
 		}
 
-		_, _, err = client.Git.CreateBlob(ctx, repo.Owner, repo.Name, blob)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "Failed to create blob for %s to %s for %s", entry.GetPath(), op, pr.GetHTMLURL())
+		if blob != nil {
+			_, _, err = client.Git.CreateBlob(ctx, repo.Owner, repo.Name, blob)
+			if err != nil {
+				return nil, nil, errors.Wrapf(err, "Failed to create blob for %s to %s for %s", entry.GetPath(), op, pr.GetHTMLURL())
+			}
 		}
 
 		tree.Entries = append(tree.Entries, entry)
