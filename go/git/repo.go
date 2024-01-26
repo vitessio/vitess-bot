@@ -120,7 +120,7 @@ func (r *Repo) DiffTree(ctx context.Context, baseTreeIsh string, headTreeIsh str
 
 	args = append(args, baseTreeIsh, headTreeIsh)
 
-	return shell.NewContext(ctx, "git", args...).Output()
+	return shell.NewContext(ctx, "git", args...).InDir(r.LocalDir).Output()
 }
 
 func (r *Repo) Fetch(ctx context.Context, remote string) error {
