@@ -26,14 +26,18 @@ import (
 )
 
 /*
+Example output of `git diff-tree -r HEAD~1 HEAD` in a sample repo:
+
 :100644 000000 5716ca5987cbf97d6bb54920bea6adde242d87e6 0000000000000000000000000000000000000000 D	bar/bar.txt
 :000000 100644 0000000000000000000000000000000000000000 76018072e09c5d31c8c6e3113b8aa0fe625195ca A	baz.txt
 :100644 100644 257cc5642cb1a054f08cc83f2d943e56fd3ebe99 b210800439ffe3f2db0d47d9aab1969b38a770a5 M	foo.txt
 */
-
 var diffTreeEntryRegexp = regexp.MustCompile(`^:(?P<oldmode>\d{6}) (?P<newmode>\d{6}) (?P<oldsha>[a-f0-9]{40}) (?P<newsha>[a-f0-9]{40}) [A-Z]\W(?P<path>.*)$`)
 
-// See https://docs.github.com/en/rest/git/trees?apiVersion=2022-11-28#create-a-tree
+// ParseDiffTreeEntry parses a single line from `git diff-tree A B` into a
+// TreeEntry object suitable to pass to github's CreateTree method.
+//
+// See https://docs.github.com/en/rest/git/trees?apiVersion=2022-11-28#create-a-tree.
 func ParseDiffTreeEntry(line string, basedir string) (*github.TreeEntry, error) {
 	match := diffTreeEntryRegexp.FindStringSubmatch(line)
 	if match == nil {
