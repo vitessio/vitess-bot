@@ -765,11 +765,6 @@ func (h *PullRequestHandler) writeAndCommitTree(
 			return nil, nil, errors.Wrapf(err, "Failed to parse diff-tree entry to %s for %s", op, pr.GetHTMLURL())
 		}
 
-		if entry == nil {
-			logger.Debug().Msgf("Invalid diff-tree line %s", line)
-			continue
-		}
-
 		tree.Entries = append(tree.Entries, entry)
 	}
 

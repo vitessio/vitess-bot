@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,7 +21,7 @@ var diffTreeEntryRegexp = regexp.MustCompile(`^:(?P<oldmode>\d{6}) (?P<newmode>\
 func ParseDiffTreeEntry(line string, basedir string) (*github.TreeEntry, error) {
 	match := diffTreeEntryRegexp.FindStringSubmatch(line)
 	if match == nil {
-		return nil, nil
+		return nil, fmt.Errorf("invalid diff-tree line format %s", line)
 	}
 
 	oldMode := match[1]
