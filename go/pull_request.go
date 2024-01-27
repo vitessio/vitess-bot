@@ -798,6 +798,7 @@ func (h *PullRequestHandler) writeAndCommitTree(
 		tree.Entries = append(tree.Entries, entry)
 	}
 
+	logger.Debug().Msgf("Creating tree with %d entries based on %s", len(tree.Entries), baseTree)
 	tree, _, err = client.Git.CreateTree(ctx, repo.Owner, repo.Name, baseTree, tree.Entries)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "Failed to create tree based on %s to %s for %s", baseTree, op, pr.GetHTMLURL())
@@ -810,6 +811,7 @@ func (h *PullRequestHandler) writeAndCommitTree(
 			{SHA: &parentCommit},
 		},
 	}
+	logger.Debug().Msgf("Authoring commit %q with tree %s with parent %s", commitMsg, tree.GetSHA(), parentCommit)
 	commit, _, err = client.Git.CreateCommit(ctx, repo.Owner, repo.Name, commit)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "Failed to create commit based on %s to %s for %s", parentCommit, op, pr.GetHTMLURL())
