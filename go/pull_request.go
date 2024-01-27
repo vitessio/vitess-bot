@@ -780,7 +780,7 @@ func (h *PullRequestHandler) writeAndCommitTree(
 			continue
 		}
 
-		entry, _, err := git.ParseDiffTreeEntry(string(line), repo.LocalDir)
+		entry, err := git.ParseDiffTreeEntry(string(line), repo.LocalDir)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "Failed to parse diff-tree entry to %s for %s", op, pr.GetHTMLURL())
 		}
@@ -789,15 +789,6 @@ func (h *PullRequestHandler) writeAndCommitTree(
 			logger.Debug().Msgf("Invalid diff-tree line %s", line)
 			continue
 		}
-
-		// 		if blob != nil {
-		// 			logger.Debug().Msgf("Creating blob for %s", entry.GetPath())
-		//
-		// 			_, _, err = client.Git.CreateBlob(ctx, repo.Owner, repo.Name, blob)
-		// 			if err != nil {
-		// 				return nil, nil, errors.Wrapf(err, "Failed to create blob for %s to %s for %s", entry.GetPath(), op, pr.GetHTMLURL())
-		// 			}
-		// 		}
 
 		tree.Entries = append(tree.Entries, entry)
 	}

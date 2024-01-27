@@ -17,10 +17,10 @@ import (
 var diffTreeEntryRegexp = regexp.MustCompile(`^:(?P<oldmode>\d{6}) (?P<newmode>\d{6}) (?P<oldsha>[a-f0-9]{40}) (?P<newsha>[a-f0-9]{40}) [A-Z]\W(?P<path>.*)$`)
 
 // See https://docs.github.com/en/rest/git/trees?apiVersion=2022-11-28#create-a-tree
-func ParseDiffTreeEntry(line string, basedir string) (*github.TreeEntry, *github.Blob, error) {
+func ParseDiffTreeEntry(line string, basedir string) (*github.TreeEntry, error) {
 	match := diffTreeEntryRegexp.FindStringSubmatch(line)
 	if match == nil {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	oldMode := match[1]
@@ -40,18 +40,15 @@ func ParseDiffTreeEntry(line string, basedir string) (*github.TreeEntry, *github
 		entry.Mode = &oldMode // GitHub API suggests sending 000000 will result in an error, and we're deleting the file anyway.
 		entry.SHA = nil
 
-		return &entry, nil, nil
+		return &entry, nil
 	}
 
 	content, err := os.ReadFile(filepath.Join(basedir, path))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	entry.Content = github.String(string(content))
 
-	return &entry, &github.Blob{
-		Content:  entry.Content,
-		Encoding: github.String("utf-8"),
-	}, nil
+	return &entry, nil
 }
