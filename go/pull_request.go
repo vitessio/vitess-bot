@@ -653,14 +653,6 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		return nil, err
 	}
 
-	// // Amend the commit to change the author to the bot.
-	// if err := website.Commit(ctx, fmt.Sprintf("generate cobradocs against %s:%s", remote, ref), git.CommitOpts{
-	// 	Author: botCommitAuthor,
-	// 	Amend:  true,
-	// }); err != nil {
-	// 	return nil, errors.Wrapf(err, "Failed to amend commit author to %s for %s", op, pr.GetHTMLURL())
-	// }
-
 	// 4. Switch vitess repo to the PR's head ref.
 	if err := vitess.FetchRef(ctx, remote, fmt.Sprintf("refs/pull/%d/head", pr.GetNumber())); err != nil {
 		return nil, errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to %s for %s", vitess.Owner, vitess.Name, pr.GetNumber(), op, pr.GetHTMLURL())
@@ -677,14 +669,6 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	).Output()
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s/%s:%s to %s for %s", vitess.Owner, vitess.Name, ref, op, pr.GetHTMLURL())
-	}
-
-	// Amend the commit to change the author to the bot.
-	if err := website.Commit(ctx, fmt.Sprintf("generate cobradocs against %s/%s:%s", website.Owner, website.Name, ref), git.CommitOpts{
-		Author: botCommitAuthor,
-		Amend:  true,
-	}); err != nil {
-		return nil, errors.Wrapf(err, "Failed to amend commit author to %s for %s", op, pr.GetHTMLURL())
 	}
 
 	_, commit, err = h.writeAndCommitTree(
@@ -708,15 +692,6 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		Ref:    &headRef,
 		Object: &github.GitObject{SHA: commit.SHA},
 	}, true)
-	//
-	// 	// 6. Force push.
-	// 	if err := website.Push(ctx, git.PushOpts{
-	// 		Remote: "origin",
-	// 		Refs:   []string{headBranch},
-	// 		Force:  true,
-	// 	}); err != nil {
-	// 		return nil, errors.Wrapf(err, "Failed to push %s to %s for %s", headBranch, op, pr.GetHTMLURL())
-	// 	}
 
 	switch openPR {
 	case nil:
