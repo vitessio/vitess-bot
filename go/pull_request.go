@@ -646,7 +646,7 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		"HEAD",
 		baseTree,
 		parent,
-		fmt.Sprintf("Generate cobradocs before preview against %s:%s", remote, ref),
+		fmt.Sprintf("Generate cobradocs preview against %s:%s", remote, ref),
 		op,
 	)
 	if err != nil {
@@ -680,7 +680,12 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		"HEAD",
 		tree.GetSHA(),
 		commit.GetSHA(),
-		fmt.Sprintf("Generate cobradocs after preview against %s:%s", remote, pr.GetHead().GetRef()),
+		fmt.Sprintf(
+			"Generate cobradocs preview against %s/%s:%s",
+			pr.GetHead().GetRepo().GetOwner(),
+			pr.GetHead().GetRepo().GetName(),
+			pr.GetHead().GetRef(),
+		),
 		op,
 	)
 	if err != nil {
