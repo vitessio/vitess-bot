@@ -682,7 +682,7 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		commit.GetSHA(),
 		fmt.Sprintf(
 			"Generate cobradocs preview against %s/%s:%s",
-			pr.GetHead().GetRepo().GetOwner(),
+			pr.GetHead().GetRepo().GetOwner().GetLogin(),
 			pr.GetHead().GetRepo().GetName(),
 			pr.GetHead().GetRef(),
 		),
