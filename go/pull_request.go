@@ -776,7 +776,11 @@ func (h *PullRequestHandler) writeAndCommitTree(
 	var tree = &github.Tree{}
 
 	for _, line := range lines {
-		entry, blob, err := git.ParseDiffTreeEntry(string(line), repo.LocalDir)
+		if len(line) == 0 {
+			continue
+		}
+
+		entry, _, err := git.ParseDiffTreeEntry(string(line), repo.LocalDir)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "Failed to parse diff-tree entry to %s for %s", op, pr.GetHTMLURL())
 		}
@@ -786,14 +790,14 @@ func (h *PullRequestHandler) writeAndCommitTree(
 			continue
 		}
 
-		if blob != nil {
-			logger.Debug().Msgf("Creating blob for %s", entry.GetPath())
-
-			_, _, err = client.Git.CreateBlob(ctx, repo.Owner, repo.Name, blob)
-			if err != nil {
-				return nil, nil, errors.Wrapf(err, "Failed to create blob for %s to %s for %s", entry.GetPath(), op, pr.GetHTMLURL())
-			}
-		}
+		// 		if blob != nil {
+		// 			logger.Debug().Msgf("Creating blob for %s", entry.GetPath())
+		//
+		// 			_, _, err = client.Git.CreateBlob(ctx, repo.Owner, repo.Name, blob)
+		// 			if err != nil {
+		// 				return nil, nil, errors.Wrapf(err, "Failed to create blob for %s to %s for %s", entry.GetPath(), op, pr.GetHTMLURL())
+		// 			}
+		// 		}
 
 		tree.Entries = append(tree.Entries, entry)
 	}
