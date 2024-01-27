@@ -696,7 +696,7 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		"HEAD",
 		tree.GetSHA(),
 		commit.GetSHA(),
-		fmt.Sprintf("Generate cobradocs after preview against %s:%s", remote, ref),
+		fmt.Sprintf("Generate cobradocs after preview against %s:%s", remote, pr.GetHead().GetRef()),
 		op,
 	)
 	if err != nil {
@@ -723,10 +723,10 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		// 7. Create PR with clear instructions that this is for preview purposes only
 		// and must not be merged.
 		newPR := &github.NewPullRequest{
-			Title:               github.String(fmt.Sprintf("[DO NOT MERGE] [cobradocs] preview cobradocs changes for %s/%s:%s", vitess.Owner, vitess.Name, ref)),
+			Title:               github.String(fmt.Sprintf("[DO NOT MERGE] [cobradocs] preview cobradocs changes for %s/%s#%d", vitess.Owner, vitess.Name, prInfo.num)),
 			Head:                github.String(headBranch),
 			Base:                github.String(branch),
-			Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to update the released cobradocs with [%s/%s:%s](%s)", vitess.Owner, vitess.Name, ref, pr.GetHTMLURL())),
+			Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to preview changes to the the released cobradocs with %s", pr.GetHTMLURL())),
 			MaintainerCanModify: github.Bool(true),
 		}
 		openPR, _, err = client.PullRequests.Create(ctx, website.Owner, website.Name, newPR)
