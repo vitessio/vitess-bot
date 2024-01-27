@@ -17,15 +17,20 @@ limitations under the License.
 package git
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-github/v53/github"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseDiffTreeEntry(t *testing.T) {
-	// TODO: create fake filesystem
-	// baz.txt contains: baz
-	// foo.txt contains foo\nfoo2 after the edit
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "baz.txt"), []byte("baz"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "foo.txt"), []byte("foo"), 0644))
+
 	tcases := []struct {
 		name    string
 		in      string
@@ -62,15 +67,25 @@ func TestParseDiffTreeEntry(t *testing.T) {
 				Content: github.String("foo"),
 			},
 		},
+		{
+			name:    "empty line",
+			in:      "",
+			want:    nil,
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tcases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			// entry, err := ParseDiffTreeEntry(tc.in, "TODO")
+			entry, err := ParseDiffTreeEntry(tc.in, tmp)
 			if tc.wantErr {
-				// TODO:
+				assert.Error(t, err)
+				return
 			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, entry)
 		})
 	}
 }
