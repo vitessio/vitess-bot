@@ -46,8 +46,6 @@ func ParseDiffTreeEntry(line string, basedir string) (*github.TreeEntry, error) 
 
 	oldMode := match[1]
 	newMode := match[2]
-	// oldSHA := match[3]
-	// newSHA := match[4]
 	path := match[5]
 
 	entry := github.TreeEntry{
