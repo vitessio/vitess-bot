@@ -803,13 +803,46 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		}
 	}()
 
+	website := git.NewRepo(
+		prInfo.repoOwner,
+		"website",
+	).WithDefaultBranch("prod").WithLocalDir(
+		filepath.Join(h.Workdir(), "website"),
+	)
+
 	// Checks:
 	// - is vitessio/vitess:main branch
 	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt` (TODO)
 	if prInfo.base.GetRef() != "main" {
 		logger.Debug().Msgf("PR %d is merged to %s, not main, skipping website cobradocs sync", prInfo.num, prInfo.base.GetRef())
-		// TODO: close any potentially open PR against website.
+		// Close any potentially open PR against website.
 		// (see https://github.com/vitessio/vitess-bot/issues/76).
+		prs, err := website.FindPRs(ctx, client, github.PullRequestListOptions{
+			State:     "open",
+			Head:      fmt.Sprintf("%s:%s", website.Owner, cobraDocsSyncBranchName(prInfo.num)),
+			Base:      website.DefaultBranch,
+			Sort:      "created",
+			Direction: "desc",
+		}, func(pr *github.PullRequest) bool {
+			return pr.GetUser().GetLogin() == h.botLogin
+		}, 1)
+		if err != nil {
+			return err
+		}
+
+		if len(prs) == 0 {
+			// No open PRs.
+			return nil
+		}
+
+		openPR := prs[0]
+		logger.Info().Msgf("closing open PR %s/%s#%d", website.Owner, website.Name, openPR.GetNumber())
+		_, _, err = client.PullRequests.Edit(ctx, website.Owner, website.Name, openPR.GetNumber(), &github.PullRequest{
+			State: github.String("closed"),
+		})
+		if err != nil {
+			return errors.Wrapf(err, "Failed to close PR %s/%s#%d", website.Owner, website.Name, openPR.GetNumber())
+		}
 		return nil
 	}
 
@@ -827,13 +860,6 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		logger.Debug().Msgf("No flags changes detected in Pull Request %s/%s#%d", vitess.Owner, vitess.Name, prInfo.num)
 		return nil
 	}
-
-	website := git.NewRepo(
-		prInfo.repoOwner,
-		"website",
-	).WithDefaultBranch("prod").WithLocalDir(
-		filepath.Join(h.Workdir(), "website"),
-	)
 
 	pr, err := h.synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
 	if err != nil {
