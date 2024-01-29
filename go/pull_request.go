@@ -32,6 +32,7 @@ import (
 	"github.com/palantir/go-githubapp/githubapp"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
+
 	"github.com/vitess.io/vitess-bot/go/git"
 	"github.com/vitess.io/vitess-bot/go/shell"
 )
@@ -693,10 +694,12 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	}
 
 	// 6. Force push.
-	client.Git.UpdateRef(ctx, website.Owner, website.Name, &github.Reference{
+	if _, _, err := client.Git.UpdateRef(ctx, website.Owner, website.Name, &github.Reference{
 		Ref:    &headRef,
 		Object: &github.GitObject{SHA: commit.SHA},
-	}, true)
+	}, true); err != nil {
+		return nil, errors.Wrapf(err, "Failed to force-push %s to %s on Pull Request %s", headBranch, op, pr.GetHTMLURL())
+	}
 
 	switch openPR {
 	case nil:
