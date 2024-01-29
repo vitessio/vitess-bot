@@ -162,6 +162,10 @@ func (h *PullRequestHandler) synchronizeCobraDocs(
 			}
 		}
 
+		// Propagate the UpdateRef call back to our PR object (which we fetched before pushing).
+		// This saves us another round trip to the API.
+		openPR.Head.SHA = commit.SHA
+
 		return openPR, nil
 	}
 }

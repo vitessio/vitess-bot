@@ -808,6 +808,8 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt` (TODO)
 	if prInfo.base.GetRef() != "main" {
 		logger.Debug().Msgf("PR %d is merged to %s, not main, skipping website cobradocs sync", prInfo.num, prInfo.base.GetRef())
+		// TODO: close any potentially open PR against website.
+		// (see https://github.com/vitessio/vitess-bot/issues/76).
 		return nil
 	}
 
@@ -839,10 +841,24 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 	}
 
 	if pr != nil {
-		// TODO: merge or close this PR (see https://github.com/vitessio/vitess-bot/issues/76).
+		_, _, err = client.PullRequests.Merge(
+			ctx,
+			website.Owner,
+			website.Name,
+			pr.GetNumber(),
+			"", // Default to the standard automatic commit message.
+			&github.PullRequestOptions{
+				SHA:         pr.GetHead().GetSHA(), // Fail if the branch has changed out from under us.
+				MergeMethod: "squash",
+			},
+		)
+
+		if err != nil {
+			return errors.Wrapf(err, "Failed to merge Pull Request %s", pr.GetHTMLURL())
+		}
 	}
 
-	return err
+	return nil
 }
 
 func detectCobraDocChanges(ctx context.Context, vitess *git.Repo, client *github.Client, prInfo prInformation) (bool, error) {
