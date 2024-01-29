@@ -831,7 +831,15 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		"website",
 	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
 
-	_, err = synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
+	pr, err := h.synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
+	if err != nil {
+		return err
+	}
+
+	if pr != nil {
+		// TODO: merge or close this PR (see https://github.com/vitessio/vitess-bot/issues/76).
+	}
+
 	return err
 }
 

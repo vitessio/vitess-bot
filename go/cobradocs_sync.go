@@ -22,12 +22,14 @@ import (
 
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+
 	"github.com/vitess.io/vitess-bot/go/git"
 	"github.com/vitess.io/vitess-bot/go/shell"
 )
 
 // synchronize cobradocs from main and release branches
-func synchronizeCobraDocs(
+func (h *PullRequestHandler) synchronizeCobraDocs(
 	ctx context.Context,
 	client *github.Client,
 	vitess *git.Repo,
@@ -35,11 +37,22 @@ func synchronizeCobraDocs(
 	pr *github.PullRequest,
 	prInfo prInformation,
 ) (*github.PullRequest, error) {
+	logger := zerolog.Ctx(ctx)
 	op := "update cobradocs"
 	branch := "prod"
-	newBranch := fmt.Sprintf("synchronize-cobradocs-for-%d", pr.GetNumber())
+	headBranch := fmt.Sprintf("synchronize-cobradocs-for-%d", pr.GetNumber())
+	headRef := fmt.Sprintf("refs/heads/%s", headBranch)
 
-	if err := createAndCheckoutBranch(ctx, client, website, branch, newBranch, fmt.Sprintf("%s on Pull Request %d", op, pr.GetNumber())); err != nil {
+	prodBranch, _, err := client.Repositories.GetBranch(ctx, website.Owner, website.Name, branch, false)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed get production branch on %s/%s to update cobradocs on Pull Request %d", website.Owner, website.Name, pr.GetNumber())
+	}
+
+	baseTree := prodBranch.GetCommit().Commit.Tree.GetSHA()
+	parent := prodBranch.GetCommit().GetSHA()
+	var openPR *github.PullRequest
+
+	if err := createAndCheckoutBranch(ctx, client, website, branch, headBranch, fmt.Sprintf("%s on Pull Request %d", op, pr.GetNumber())); err != nil {
 		return nil, err
 	}
 
@@ -47,51 +60,97 @@ func synchronizeCobraDocs(
 		return nil, err
 	}
 
+	prs, err := website.FindPRs(ctx, client, github.PullRequestListOptions{
+		State:     "open",
+		Head:      fmt.Sprintf("%s:%s", website.Owner, headBranch),
+		Base:      branch,
+		Sort:      "created",
+		Direction: "desc",
+	}, func(pr *github.PullRequest) bool {
+		return pr.GetUser().GetLogin() == h.botLogin
+	}, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(prs) != 0 {
+		openPR = prs[0]
+		baseRepo := openPR.GetBase().GetRepo()
+		logger.Debug().Msgf("Using existing PR #%d (%s/%s:%s)", openPR.GetNumber(), baseRepo.GetOwner().GetLogin(), baseRepo.GetName(), headBranch)
+
+		// If branch already existed, hard reset to `prod`.
+		if err := website.ResetHard(ctx, branch); err != nil {
+			return nil, errors.Wrapf(err, "Failed to reset %s to %s to %s for %s", headBranch, branch, op, pr.GetHTMLURL())
+		}
+	}
+
 	if err := vitess.FetchRef(ctx, "origin", "--tags"); err != nil {
 		return nil, errors.Wrapf(err, "Failed to fetch tags in repository %s/%s to %s on Pull Request %d", vitess.Owner, vitess.Name, op, prInfo.num)
 	}
 
-	// Run the sync script (which authors the commit already).
+	// Run the sync script (which authors the commit locally but not with GitHub auth ctx).
 	if _, err := shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
 		fmt.Sprintf("VITESS_DIR=%s", vitess.LocalDir),
 		"COBRADOCS_SYNC_PERSIST=yes",
 	).Output(); err != nil {
-		return nil, errors.Wrapf(err, "Failed to run cobradoc sync script in repository %s/%s to %s on Pull Request %d", website.Owner, website.Name, newBranch, prInfo.num)
+		return nil, errors.Wrapf(err, "Failed to run cobradoc sync script in repository %s/%s to %s on Pull Request %d", website.Owner, website.Name, op, prInfo.num)
 	}
 
-	// Amend the commit to change the author to the bot.
-	if err := website.Commit(ctx, "", git.CommitOpts{
-		Author: botCommitAuthor,
-		Amend:  true,
-		NoEdit: true,
-	}); err != nil {
-		return nil, errors.Wrapf(err, "Failed to amend commit author to %s on Pull Request %d", op, prInfo.num)
-	}
-
-	// Push the branch
-	if err := website.Push(ctx, git.PushOpts{
-		Remote: "origin",
-		Refs:   []string{newBranch},
-		Force:  true,
-	}); err != nil {
-		return nil, errors.Wrapf(err, "Failed to push %s to %s on Pull Request %d", newBranch, op, prInfo.num)
-	}
-
-	// Create a Pull Request for the new branch
-	newPR := &github.NewPullRequest{
-		Title:               github.String(fmt.Sprintf("[cobradocs] synchronize with %s (vitess#%d)", pr.GetTitle(), pr.GetNumber())),
-		Head:                github.String(newBranch),
-		Base:                github.String(branch),
-		Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to synchronize the cobradocs with %s", pr.GetHTMLURL())),
-		MaintainerCanModify: github.Bool(true),
-	}
-	newPRCreated, _, err := client.PullRequests.Create(ctx, website.Owner, website.Name, newPR)
+	// Create a tree of the commit above using the GitHub API and then commit it.
+	_, commit, err := h.writeAndCommitTree(
+		ctx,
+		client,
+		website,
+		pr,
+		branch,
+		"HEAD",
+		baseTree,
+		parent,
+		fmt.Sprintf("synchronize cobradocs with %s/%s#%d", vitess.Owner, vitess.Name, pr.GetNumber()),
+		op,
+	)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create Pull Request using branch %s on %s/%s", newBranch, website.Owner, website.Name)
+		return nil, err
 	}
 
-	return newPRCreated, nil
+	// Push the branch.
+	if _, _, err := client.Git.UpdateRef(ctx, website.Owner, website.Name, &github.Reference{
+		Ref:    &headRef,
+		Object: &github.GitObject{SHA: commit.SHA},
+	}, true); err != nil {
+		return nil, errors.Wrapf(err, "Failed to force-push %s to %s on Pull Request %s", headBranch, op, pr.GetHTMLURL())
+	}
 
+	switch openPR {
+	case nil:
+		// Create a Pull Request for the new branch.
+		newPR := &github.NewPullRequest{
+			Title:               github.String(fmt.Sprintf("[cobradocs] synchronize with %s (vitess#%d)", pr.GetTitle(), pr.GetNumber())),
+			Head:                github.String(headBranch),
+			Base:                github.String(branch),
+			Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to synchronize the cobradocs with %s", pr.GetHTMLURL())),
+			MaintainerCanModify: github.Bool(true),
+		}
+		newPRCreated, _, err := client.PullRequests.Create(ctx, website.Owner, website.Name, newPR)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create Pull Request using branch %s on %s/%s", headBranch, website.Owner, website.Name)
+		}
+
+		return newPRCreated, nil
+	default:
+		if _, _, err := client.Issues.CreateComment(ctx, website.Owner, website.Name, openPR.GetNumber(), &github.IssueComment{
+			Body: github.String(fmt.Sprintf("PR was force-pushed to resync changes after merge of vitess PR %s. Removing do-not-merge label.", pr.GetHTMLURL())),
+		}); err != nil {
+			return nil, errors.Wrapf(err, "Failed to add PR comment on %s", openPR.GetHTMLURL())
+		}
+
+		// Remove the doNotMerge label.
+		if _, err = client.Issues.RemoveLabelForIssue(ctx, website.Owner, website.Name, openPR.GetNumber(), doNotMergeLabel); err != nil {
+			return nil, errors.Wrapf(err, "Failed to add %s label to %s", doNotMergeLabel, openPR.GetHTMLURL())
+		}
+
+		return openPR, nil
+	}
 }
 
 func createAndCheckoutBranch(ctx context.Context, client *github.Client, repo *git.Repo, baseBranch string, newBranch string, op string) error {
