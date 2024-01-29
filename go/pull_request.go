@@ -32,6 +32,7 @@ import (
 	"github.com/palantir/go-githubapp/githubapp"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
+
 	"github.com/vitess.io/vitess-bot/go/git"
 	"github.com/vitess.io/vitess-bot/go/shell"
 )
@@ -536,7 +537,7 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	// 1. Find an existing PR and switch to its branch, or create a new branch
 	// based on `prod`.
 	branch := "prod"
-	headBranch := fmt.Sprintf("cobradocs-preview-for-%d", prInfo.num)
+	headBranch := fmt.Sprintf("synchronize-cobradocs-for-%d", prInfo.num)
 	headRef := fmt.Sprintf("refs/heads/%s", headBranch)
 
 	prodBranch, _, err := client.Repositories.GetBranch(ctx, website.Owner, website.Name, branch, false)
@@ -693,10 +694,12 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	}
 
 	// 6. Force push.
-	client.Git.UpdateRef(ctx, website.Owner, website.Name, &github.Reference{
+	if _, _, err := client.Git.UpdateRef(ctx, website.Owner, website.Name, &github.Reference{
 		Ref:    &headRef,
 		Object: &github.GitObject{SHA: commit.SHA},
-	}, true)
+	}, true); err != nil {
+		return nil, errors.Wrapf(err, "Failed to force-push %s to %s on Pull Request %s", headBranch, op, pr.GetHTMLURL())
+	}
 
 	switch openPR {
 	case nil:
@@ -805,6 +808,8 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt` (TODO)
 	if prInfo.base.GetRef() != "main" {
 		logger.Debug().Msgf("PR %d is merged to %s, not main, skipping website cobradocs sync", prInfo.num, prInfo.base.GetRef())
+		// TODO: close any potentially open PR against website.
+		// (see https://github.com/vitessio/vitess-bot/issues/76).
 		return nil
 	}
 
@@ -826,10 +831,34 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 	website := git.NewRepo(
 		prInfo.repoOwner,
 		"website",
-	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
+	).WithDefaultBranch("prod").WithLocalDir(
+		filepath.Join(h.Workdir(), "website"),
+	)
 
-	_, err = synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
-	return err
+	pr, err := h.synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
+	if err != nil {
+		return err
+	}
+
+	if pr != nil {
+		_, _, err = client.PullRequests.Merge(
+			ctx,
+			website.Owner,
+			website.Name,
+			pr.GetNumber(),
+			"", // Default to the standard automatic commit message.
+			&github.PullRequestOptions{
+				SHA:         pr.GetHead().GetSHA(), // Fail if the branch has changed out from under us.
+				MergeMethod: "squash",
+			},
+		)
+
+		if err != nil {
+			return errors.Wrapf(err, "Failed to merge Pull Request %s", pr.GetHTMLURL())
+		}
+	}
+
+	return nil
 }
 
 func detectCobraDocChanges(ctx context.Context, vitess *git.Repo, client *github.Client, prInfo prInformation) (bool, error) {
