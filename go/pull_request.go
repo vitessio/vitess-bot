@@ -537,7 +537,7 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	// 1. Find an existing PR and switch to its branch, or create a new branch
 	// based on `prod`.
 	branch := "prod"
-	headBranch := fmt.Sprintf("synchronize-cobradocs-for-%d", prInfo.num)
+	headBranch := cobraDocsSyncBranchName(prInfo.num)
 	headRef := fmt.Sprintf("refs/heads/%s", headBranch)
 
 	prodBranch, _, err := client.Repositories.GetBranch(ctx, website.Owner, website.Name, branch, false)
