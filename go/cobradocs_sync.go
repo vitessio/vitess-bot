@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/google/go-github/v53/github"
 	"github.com/pkg/errors"
@@ -138,6 +139,14 @@ func (h *PullRequestHandler) synchronizeCobraDocs(
 
 		return newPRCreated, nil
 	default:
+		// Edit the title and body to take us out of preview-mode.
+		if _, _, err := client.PullRequests.Edit(ctx, website.Owner, website.Name, openPR.GetNumber(), &github.PullRequest{
+			Title: github.String(fmt.Sprintf("[cobradocs] synchronize with %s (vitess#%d)", pr.GetTitle(), pr.GetNumber())),
+			Body:  github.String(fmt.Sprintf("## Description\nThis is an automated PR to synchronize the cobradocs with %s", pr.GetHTMLURL())),
+		}); err != nil {
+			return nil, errors.Wrapf(err, "Failed to edit PR title/body on %s", openPR.GetHTMLURL())
+		}
+
 		if _, _, err := client.Issues.CreateComment(ctx, website.Owner, website.Name, openPR.GetNumber(), &github.IssueComment{
 			Body: github.String(fmt.Sprintf("PR was force-pushed to resync changes after merge of vitess PR %s. Removing do-not-merge label.", pr.GetHTMLURL())),
 		}); err != nil {
@@ -145,8 +154,12 @@ func (h *PullRequestHandler) synchronizeCobraDocs(
 		}
 
 		// Remove the doNotMerge label.
-		if _, err = client.Issues.RemoveLabelForIssue(ctx, website.Owner, website.Name, openPR.GetNumber(), doNotMergeLabel); err != nil {
-			return nil, errors.Wrapf(err, "Failed to add %s label to %s", doNotMergeLabel, openPR.GetHTMLURL())
+		if resp, err := client.Issues.RemoveLabelForIssue(ctx, website.Owner, website.Name, openPR.GetNumber(), doNotMergeLabel); err != nil {
+			// We get a 404 if the label was already removed.
+			if resp.StatusCode != http.StatusNotFound {
+
+				return nil, errors.Wrapf(err, "Failed to remove %s label to %s", doNotMergeLabel, openPR.GetHTMLURL())
+			}
 		}
 
 		return openPR, nil

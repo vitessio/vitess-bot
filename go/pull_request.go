@@ -829,7 +829,9 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 	website := git.NewRepo(
 		prInfo.repoOwner,
 		"website",
-	).WithLocalDir(filepath.Join(h.Workdir(), "website"))
+	).WithDefaultBranch("prod").WithLocalDir(
+		filepath.Join(h.Workdir(), "website"),
+	)
 
 	pr, err := h.synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
 	if err != nil {
