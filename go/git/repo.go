@@ -108,6 +108,21 @@ func (r *Repo) Commit(ctx context.Context, msg string, opts CommitOpts) error {
 	return err
 }
 
+type DiffTreeOpts struct {
+	Recursive bool
+}
+
+func (r *Repo) DiffTree(ctx context.Context, baseTreeIsh string, headTreeIsh string, opts DiffTreeOpts) ([]byte, error) {
+	args := []string{"diff-tree"}
+	if opts.Recursive {
+		args = append(args, "-r")
+	}
+
+	args = append(args, baseTreeIsh, headTreeIsh)
+
+	return shell.NewContext(ctx, "git", args...).InDir(r.LocalDir).Output()
+}
+
 func (r *Repo) Fetch(ctx context.Context, remote string) error {
 	return r.fetch(ctx, remote)
 }

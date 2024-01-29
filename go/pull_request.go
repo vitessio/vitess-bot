@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -536,6 +537,15 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	// based on `prod`.
 	branch := "prod"
 	headBranch := fmt.Sprintf("cobradocs-preview-for-%d", prInfo.num)
+	headRef := fmt.Sprintf("refs/heads/%s", headBranch)
+
+	prodBranch, _, err := client.Repositories.GetBranch(ctx, website.Owner, website.Name, branch, false)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed get production branch on %s/%s to preview cobradocs on Pull Request %d", website.Owner, website.Name, pr.GetNumber())
+	}
+
+	baseTree := prodBranch.GetCommit().Commit.Tree.GetSHA()
+	parent := prodBranch.GetCommit().GetSHA()
 	op := "generate cobradocs preview"
 	var openPR *github.PullRequest
 
@@ -609,8 +619,8 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 
 	remote := pr.GetBase().GetRepo().GetCloneURL()
 	ref := pr.GetBase().GetRef()
-	if err := vitess.FetchRef(ctx, "origin", fmt.Sprintf("refs/pull/%d/head", pr.GetNumber())); err != nil {
-		return nil, errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to %s for %s", vitess.Owner, vitess.Name, pr.GetNumber(), op, pr.GetHTMLURL())
+	if err := vitess.FetchRef(ctx, remote, ref); err != nil {
+		return nil, errors.Wrapf(err, "Failed to fetch %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
 	}
 
 	if err := vitess.Checkout(ctx, "FETCH_HEAD"); err != nil {
@@ -627,22 +637,28 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
 	}
 
-	// Amend the commit to change the author to the bot.
-	if err := website.Commit(ctx, fmt.Sprintf("generate cobradocs against %s:%s", remote, ref), git.CommitOpts{
-		Author: botCommitAuthor,
-		Amend:  true,
-	}); err != nil {
-		return nil, errors.Wrapf(err, "Failed to amend commit author to %s for %s", op, pr.GetHTMLURL())
+	tree, commit, err := h.writeAndCommitTree(
+		ctx,
+		client,
+		website,
+		pr,
+		branch,
+		"HEAD",
+		baseTree,
+		parent,
+		fmt.Sprintf("Generate cobradocs preview against %s:%s", remote, ref),
+		op,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	// 4. Switch vitess repo to the PR's head ref.
-	ref = pr.GetHead().GetRef()
-	if err := vitess.Checkout(ctx, ref); err != nil {
-		return nil, errors.Wrapf(err, "Failed to checkout %s in %s/%s to %s for %s", ref, vitess.Owner, vitess.Name, op, pr.GetHTMLURL())
+	if err := vitess.FetchRef(ctx, remote, fmt.Sprintf("refs/pull/%d/head", pr.GetNumber())); err != nil {
+		return nil, errors.Wrapf(err, "Failed to fetch Pull Request %s/%s#%d to %s for %s", vitess.Owner, vitess.Name, pr.GetNumber(), op, pr.GetHTMLURL())
 	}
-
-	if err := vitess.Pull(ctx); err != nil {
-		return nil, errors.Wrapf(err, "Failed to pull %s/%s:%s to %s for %s", vitess.Owner, vitess.Name, ref, op, pr.GetHTMLURL())
+	if err := vitess.Checkout(ctx, "FETCH_HEAD"); err != nil {
+		return nil, errors.Wrapf(err, "Failed to checkout %s in %s/%s to %s for %s", ref, vitess.Owner, vitess.Name, op, pr.GetHTMLURL())
 	}
 
 	// 5. Run the sync script again with `COBRADOC_VERSION_PAIRS=$(headref):$(docsVersion)`.
@@ -655,32 +671,42 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s/%s:%s to %s for %s", vitess.Owner, vitess.Name, ref, op, pr.GetHTMLURL())
 	}
 
-	// Amend the commit to change the author to the bot.
-	if err := website.Commit(ctx, fmt.Sprintf("generate cobradocs against %s/%s:%s", website.Owner, website.Name, ref), git.CommitOpts{
-		Author: botCommitAuthor,
-		Amend:  true,
-	}); err != nil {
-		return nil, errors.Wrapf(err, "Failed to amend commit author to %s for %s", op, pr.GetHTMLURL())
+	_, commit, err = h.writeAndCommitTree(
+		ctx,
+		client,
+		website,
+		pr,
+		"HEAD~1",
+		"HEAD",
+		tree.GetSHA(),
+		commit.GetSHA(),
+		fmt.Sprintf(
+			"Generate cobradocs preview against %s/%s:%s",
+			pr.GetHead().GetRepo().GetOwner().GetLogin(),
+			pr.GetHead().GetRepo().GetName(),
+			pr.GetHead().GetRef(),
+		),
+		op,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	// 6. Force push.
-	if err := website.Push(ctx, git.PushOpts{
-		Remote: "origin",
-		Refs:   []string{headBranch},
-		Force:  true,
-	}); err != nil {
-		return nil, errors.Wrapf(err, "Failed to push %s to %s for %s", headBranch, op, pr.GetHTMLURL())
-	}
+	client.Git.UpdateRef(ctx, website.Owner, website.Name, &github.Reference{
+		Ref:    &headRef,
+		Object: &github.GitObject{SHA: commit.SHA},
+	}, true)
 
 	switch openPR {
 	case nil:
 		// 7. Create PR with clear instructions that this is for preview purposes only
 		// and must not be merged.
 		newPR := &github.NewPullRequest{
-			Title:               github.String(fmt.Sprintf("[DO NOT MERGE] [cobradocs] preview cobradocs changes for %s/%s:%s", vitess.Owner, vitess.Name, ref)),
+			Title:               github.String(fmt.Sprintf("[DO NOT MERGE] [cobradocs] preview cobradocs changes for %s/%s#%d", vitess.Owner, vitess.Name, prInfo.num)),
 			Head:                github.String(headBranch),
 			Base:                github.String(branch),
-			Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to update the released cobradocs with [%s/%s:%s](%s)", vitess.Owner, vitess.Name, ref, pr.GetHTMLURL())),
+			Body:                github.String(fmt.Sprintf("## Description\nThis is an automated PR to preview changes to the the released cobradocs with %s", pr.GetHTMLURL())),
 			MaintainerCanModify: github.Bool(true),
 		}
 		openPR, _, err = client.PullRequests.Create(ctx, website.Owner, website.Name, newPR)
@@ -703,6 +729,61 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	}
 
 	return openPR, nil
+}
+
+func (h *PullRequestHandler) writeAndCommitTree(
+	ctx context.Context,
+	client *github.Client,
+	repo *git.Repo,
+	pr *github.PullRequest,
+	baseRef string,
+	headRef string,
+	baseTree string,
+	parentCommit string,
+	commitMsg string,
+	op string,
+) (*github.Tree, *github.Commit, error) {
+	out, err := repo.DiffTree(ctx, baseRef, headRef, git.DiffTreeOpts{Recursive: true})
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "Failed to diff-tree %s %s in %s/%s to %s for %s", baseRef, headRef, repo.Owner, repo.Name, op, pr.GetHTMLURL())
+	}
+
+	lines := bytes.Split(out, []byte{'\n'})
+
+	var tree = &github.Tree{}
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+
+		entry, err := git.ParseDiffTreeEntry(string(line), repo.LocalDir)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "Failed to parse diff-tree entry to %s for %s", op, pr.GetHTMLURL())
+		}
+
+		tree.Entries = append(tree.Entries, entry)
+	}
+
+	tree, _, err = client.Git.CreateTree(ctx, repo.Owner, repo.Name, baseTree, tree.Entries)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "Failed to create tree based on %s to %s for %s", baseTree, op, pr.GetHTMLURL())
+	}
+
+	commit := &github.Commit{
+		Message: &commitMsg,
+		Tree:    tree,
+		Parents: []*github.Commit{
+			{SHA: &parentCommit},
+		},
+	}
+
+	commit, _, err = client.Git.CreateCommit(ctx, repo.Owner, repo.Name, commit)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "Failed to create commit based on %s to %s for %s", parentCommit, op, pr.GetHTMLURL())
+	}
+
+	return tree, commit, nil
 }
 
 func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRequestEvent, prInfo prInformation) (err error) {
