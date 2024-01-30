@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -628,6 +629,12 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		return nil, errors.Wrapf(err, "Failed to checkout %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
 	}
 
+	var (
+		tree            *github.Tree
+		commit          *github.Commit
+		skipFirstCommit bool
+	)
+
 	// 3. Run the sync script with `COBRADOC_VERSION_PAIRS="$(baseref):$(docsVersion)`.
 	_, err = shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
 		fmt.Sprintf("VITESS_DIR=%s", vitess.LocalDir),
@@ -635,23 +642,41 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		fmt.Sprintf("COBRADOC_VERSION_PAIRS=HEAD:%s", docsVersion),
 	).Output()
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+		var exitErr *exec.ExitError
+		if (errors.As(err, &exitErr)) &&
+			(bytes.Contains(exitErr.Stderr, []byte("No changes to cobradocs detected"))) {
+			logger.Info().Msgf("No cobradocs changed for PR %s/%s#%d at base %s. Skipping first commit ...", remote, vitess.Name, pr.GetNumber(), ref)
+			skipFirstCommit = true
+		} else {
+			logger.Err(err).Msgf("%T", err)
+			return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+
+		}
 	}
 
-	tree, commit, err := h.writeAndCommitTree(
-		ctx,
-		client,
-		website,
-		pr,
-		branch,
-		"HEAD",
-		baseTree,
-		parent,
-		fmt.Sprintf("Generate cobradocs preview against %s:%s", remote, ref),
-		op,
-	)
-	if err != nil {
-		return nil, err
+	if !skipFirstCommit {
+		tree, commit, err = h.writeAndCommitTree(
+			ctx,
+			client,
+			website,
+			pr,
+			branch,
+			"HEAD",
+			baseTree,
+			parent,
+			fmt.Sprintf("Generate cobradocs preview against %s:%s", remote, ref),
+			op,
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		tree = &github.Tree{
+			SHA: &baseTree,
+		}
+		commit = &github.Commit{
+			SHA: &parent,
+		}
 	}
 
 	// 4. Switch vitess repo to the PR's head ref.
