@@ -106,9 +106,9 @@ func (c *cmd) Output() ([]byte, error) {
 
 func wrapErr(err error, out []byte) error {
 	if execErr, ok := err.(*exec.ExitError); ok {
-		err := fmt.Errorf("%s\nstderr: %s", err.Error(), execErr.Stderr)
+		err := fmt.Errorf("%w\nstderr: %s", err, execErr.Stderr)
 		if out != nil {
-			err = fmt.Errorf("%s\nstdout: %s", err.Error(), out)
+			err = fmt.Errorf("%w\nstdout: %s", err, out)
 		}
 
 		return err
