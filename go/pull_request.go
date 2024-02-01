@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -537,7 +538,7 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	// 1. Find an existing PR and switch to its branch, or create a new branch
 	// based on `prod`.
 	branch := "prod"
-	headBranch := fmt.Sprintf("synchronize-cobradocs-for-%d", prInfo.num)
+	headBranch := cobraDocsSyncBranchName(prInfo.num)
 	headRef := fmt.Sprintf("refs/heads/%s", headBranch)
 
 	prodBranch, _, err := client.Repositories.GetBranch(ctx, website.Owner, website.Name, branch, false)
@@ -628,6 +629,12 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		return nil, errors.Wrapf(err, "Failed to checkout %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
 	}
 
+	var (
+		tree            *github.Tree
+		commit          *github.Commit
+		skipFirstCommit bool
+	)
+
 	// 3. Run the sync script with `COBRADOC_VERSION_PAIRS="$(baseref):$(docsVersion)`.
 	_, err = shell.NewContext(ctx, "./tools/sync_cobradocs.sh").InDir(website.LocalDir).WithExtraEnv(
 		fmt.Sprintf("VITESS_DIR=%s", vitess.LocalDir),
@@ -635,23 +642,41 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 		fmt.Sprintf("COBRADOC_VERSION_PAIRS=HEAD:%s", docsVersion),
 	).Output()
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) &&
+			bytes.Contains(exitErr.Stderr, []byte("No changes to cobradocs detected")) {
+			logger.Info().Msgf("No cobradocs changed for PR %s/%s#%d at base %s. Skipping first commit ...", remote, vitess.Name, pr.GetNumber(), ref)
+			skipFirstCommit = true
+		} else {
+			logger.Err(err).Msgf("%T", err)
+			return nil, errors.Wrapf(err, "Failed to run cobradocs sync script against %s:%s to %s for %s", remote, ref, op, pr.GetHTMLURL())
+
+		}
 	}
 
-	tree, commit, err := h.writeAndCommitTree(
-		ctx,
-		client,
-		website,
-		pr,
-		branch,
-		"HEAD",
-		baseTree,
-		parent,
-		fmt.Sprintf("Generate cobradocs preview against %s:%s", remote, ref),
-		op,
-	)
-	if err != nil {
-		return nil, err
+	if !skipFirstCommit {
+		tree, commit, err = h.writeAndCommitTree(
+			ctx,
+			client,
+			website,
+			pr,
+			branch,
+			"HEAD",
+			baseTree,
+			parent,
+			fmt.Sprintf("Generate cobradocs preview against %s:%s", remote, ref),
+			op,
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		tree = &github.Tree{
+			SHA: &baseTree,
+		}
+		commit = &github.Commit{
+			SHA: &parent,
+		}
 	}
 
 	// 4. Switch vitess repo to the PR's head ref.
@@ -803,13 +828,46 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		}
 	}()
 
+	website := git.NewRepo(
+		prInfo.repoOwner,
+		"website",
+	).WithDefaultBranch("prod").WithLocalDir(
+		filepath.Join(h.Workdir(), "website"),
+	)
+
 	// Checks:
 	// - is vitessio/vitess:main branch
 	// - PR contains changes to either `go/cmd/**/*.go` OR `go/flags/endtoend/*.txt` (TODO)
 	if prInfo.base.GetRef() != "main" {
 		logger.Debug().Msgf("PR %d is merged to %s, not main, skipping website cobradocs sync", prInfo.num, prInfo.base.GetRef())
-		// TODO: close any potentially open PR against website.
+		// Close any potentially open PR against website.
 		// (see https://github.com/vitessio/vitess-bot/issues/76).
+		prs, err := website.FindPRs(ctx, client, github.PullRequestListOptions{
+			State:     "open",
+			Head:      fmt.Sprintf("%s:%s", website.Owner, cobraDocsSyncBranchName(prInfo.num)),
+			Base:      website.DefaultBranch,
+			Sort:      "created",
+			Direction: "desc",
+		}, func(pr *github.PullRequest) bool {
+			return pr.GetUser().GetLogin() == h.botLogin
+		}, 1)
+		if err != nil {
+			return err
+		}
+
+		if len(prs) == 0 {
+			// No open PRs.
+			return nil
+		}
+
+		openPR := prs[0]
+		logger.Info().Msgf("closing open PR %s/%s#%d", website.Owner, website.Name, openPR.GetNumber())
+		_, _, err = client.PullRequests.Edit(ctx, website.Owner, website.Name, openPR.GetNumber(), &github.PullRequest{
+			State: github.String("closed"),
+		})
+		if err != nil {
+			return errors.Wrapf(err, "Failed to close PR %s/%s#%d", website.Owner, website.Name, openPR.GetNumber())
+		}
 		return nil
 	}
 
@@ -827,13 +885,6 @@ func (h *PullRequestHandler) updateDocs(ctx context.Context, event github.PullRe
 		logger.Debug().Msgf("No flags changes detected in Pull Request %s/%s#%d", vitess.Owner, vitess.Name, prInfo.num)
 		return nil
 	}
-
-	website := git.NewRepo(
-		prInfo.repoOwner,
-		"website",
-	).WithDefaultBranch("prod").WithLocalDir(
-		filepath.Join(h.Workdir(), "website"),
-	)
 
 	pr, err := h.synchronizeCobraDocs(ctx, client, vitess, website, event.GetPullRequest(), prInfo)
 	if err != nil {

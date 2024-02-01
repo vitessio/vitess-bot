@@ -29,6 +29,10 @@ import (
 	"github.com/vitess.io/vitess-bot/go/shell"
 )
 
+func cobraDocsSyncBranchName(prNum int) string {
+	return fmt.Sprintf("synchronize-cobradocs-for-%d", prNum)
+}
+
 // synchronize cobradocs from main and release branches
 func (h *PullRequestHandler) synchronizeCobraDocs(
 	ctx context.Context,
@@ -41,7 +45,7 @@ func (h *PullRequestHandler) synchronizeCobraDocs(
 	logger := zerolog.Ctx(ctx)
 	op := "update cobradocs"
 	branch := "prod"
-	headBranch := fmt.Sprintf("synchronize-cobradocs-for-%d", pr.GetNumber())
+	headBranch := cobraDocsSyncBranchName(pr.GetNumber())
 	headRef := fmt.Sprintf("refs/heads/%s", headBranch)
 
 	prodBranch, _, err := client.Repositories.GetBranch(ctx, website.Owner, website.Name, branch, false)
