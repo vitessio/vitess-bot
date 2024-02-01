@@ -643,8 +643,8 @@ func (h *PullRequestHandler) createCobraDocsPreviewPR(
 	).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
-		if (errors.As(err, &exitErr)) &&
-			(bytes.Contains(exitErr.Stderr, []byte("No changes to cobradocs detected"))) {
+		if errors.As(err, &exitErr) &&
+			bytes.Contains(exitErr.Stderr, []byte("No changes to cobradocs detected")) {
 			logger.Info().Msgf("No cobradocs changed for PR %s/%s#%d at base %s. Skipping first commit ...", remote, vitess.Name, pr.GetNumber(), ref)
 			skipFirstCommit = true
 		} else {
