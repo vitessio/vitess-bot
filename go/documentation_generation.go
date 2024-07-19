@@ -17,11 +17,14 @@ limitations under the License.
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/google/go-github/v53/github"
@@ -87,16 +90,50 @@ func cloneWebsiteAndGetCurrentVersionOfDocs(ctx context.Context, website *git.Re
 		return "", errors.Wrapf(err, "Failed to pull vitessio/website to generate error code on Pull Request %d", prInfo.num)
 	}
 
-	_, err := shell.NewContext(ctx, "cp", "./tools/get_release_from_docs.sh", website.LocalDir).Output()
+	currentVersionDocs, err := findCorrespondingDocumentationVersion(website, prInfo.base.GetRef())
 	if err != nil {
-		return "", errors.Wrapf(err, "Failed to copy ./tools/get_release_from_docs.sh to local clone of website repo to generate error code on Pull Request %d", prInfo.num)
+		return "", errors.Wrapf(err, "Failed to find corresponding documentation version for Pull Request %d", prInfo.num)
+	}
+	return currentVersionDocs, nil
+}
+
+func findCorrespondingDocumentationVersion(website *git.Repo, baseRef string) (string, error) {
+	// If our base is "main" we want to open the config.toml of the website repository
+	// and figure out what is the "next" release.
+	if baseRef == "main" {
+		file, err := os.Open(path.Join(website.LocalDir, "config.toml"))
+		if err != nil {
+			return "", errors.Wrapf(err, "Failed to open config.toml file")
+		}
+		defer file.Close()
+
+		var result string
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.Contains(line, "next") {
+				parts := strings.Split(line, "\"")
+				if len(parts) > 1 {
+					result = parts[1]
+				}
+				break
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			return "", errors.Wrapf(err, "Failed to scan config.toml file %s", file.Name())
+		}
+		return strings.TrimSpace(result), nil
 	}
 
-	currentVersionDocsBytes, err := shell.New("./get_release_from_docs.sh").InDir(website.LocalDir).Output()
-	if err != nil {
-		return "", errors.Wrapf(err, "Failed to get current documentation version from config.toml in vitessio/website to generate error code on Pull Request %d", prInfo.num)
+	re := regexp.MustCompile(`release-(\d+\.\d+)`)
+	matches := re.FindStringSubmatch(baseRef)
+	if len(matches) == 2 {
+		return matches[1], nil
 	}
-	return string(currentVersionDocsBytes), nil
+
+	return "", errors.Errorf("Failed to find corresponding documentation version in config.toml baseRef=%s", baseRef)
 }
 
 func generateErrorCodeDocumentation(

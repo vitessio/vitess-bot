@@ -130,59 +130,88 @@ func (h *PullRequestHandler) Handle(ctx context.Context, eventType, deliveryID s
 		return errors.Wrap(err, "failed to parse issue comment event payload")
 	}
 
+	var err error
 	switch event.GetAction() {
 	case "opened":
-		prInfo := getPRInformation(event)
-		if prInfo.repoName == "vitess" {
-			err := h.addReviewChecklist(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-			err = h.addLabels(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-			err = h.createDocsPreview(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-			err = h.createErrorDocumentation(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-		}
+		err = h.openedPullRequest(ctx, event)
 	case "closed":
-		prInfo := getPRInformation(event)
-		if prInfo.merged && prInfo.repoName == "vitess" {
-			err := h.backportPR(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-			err = h.updateDocs(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-		}
+		err = h.closedPullRequest(ctx, event)
 	case "labeled":
-		prInfo := getPRInformation(event)
-		if prInfo.repoName == "vitess" {
-			err := h.addArewefastyetComment(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-		}
+		err = h.labeledPullRequest(ctx, event)
 	case "synchronize":
-		prInfo := getPRInformation(event)
-		if prInfo.repoName == "vitess" {
-			err := h.createDocsPreview(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-			err = h.createErrorDocumentation(ctx, event, prInfo)
-			if err != nil {
-				return err
-			}
-		}
+		err = h.synchronizePullRequest(ctx, event)
+	}
+	return err
+}
+
+func (h *PullRequestHandler) openedPullRequest(ctx context.Context, event github.PullRequestEvent) error {
+	prInfo := getPRInformation(event)
+	if prInfo.repoName != "vitess" {
+		return nil
+	}
+
+	err := h.addReviewChecklist(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	err = h.addLabels(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	err = h.createDocsPreview(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	err = h.createErrorDocumentation(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *PullRequestHandler) closedPullRequest(ctx context.Context, event github.PullRequestEvent) error {
+	prInfo := getPRInformation(event)
+	if prInfo.repoName != "vitess" || !prInfo.merged {
+		return nil
+	}
+
+	err := h.backportPR(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	err = h.updateDocs(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *PullRequestHandler) labeledPullRequest(ctx context.Context, event github.PullRequestEvent) error {
+	prInfo := getPRInformation(event)
+	if prInfo.repoName != "vitess" {
+		return nil
+	}
+
+	err := h.addArewefastyetComment(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *PullRequestHandler) synchronizePullRequest(ctx context.Context, event github.PullRequestEvent) error {
+	prInfo := getPRInformation(event)
+	if prInfo.repoName != "vitess" {
+		return nil
+	}
+
+	err := h.createDocsPreview(ctx, event, prInfo)
+	if err != nil {
+		return err
+	}
+	err = h.createErrorDocumentation(ctx, event, prInfo)
+	if err != nil {
+		return err
 	}
 	return nil
 }
