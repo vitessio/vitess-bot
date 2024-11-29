@@ -179,10 +179,6 @@ func (h *PullRequestHandler) closedPullRequest(ctx context.Context, event github
 	if err != nil {
 		return err
 	}
-	err = h.updateDocs(ctx, event, prInfo)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
