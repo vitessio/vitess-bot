@@ -1,5 +1,8 @@
 # vitess-bot
 
+> [!NOTE]
+> This bot's functionality has been ported over to use GitHub Actions. See https://github.com/vitessio/vitess/pull/19048 for more information.
+
 This bot automates some tasks in the [`vitessio/vitess`](https://github.com/vitessio/vitess) git repo.
 
 It currently automates the following tasks:
